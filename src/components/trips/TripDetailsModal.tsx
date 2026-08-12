@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { Trip, TripRequest } from '../../types';
-import { X, Clock, Car, MessageCircle, Check } from 'lucide-react';
+import { X, Clock, Car, MessageCircle, Check, Trash2 } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -12,6 +12,7 @@ interface Props {
   onRejectRequest: (requestId: string) => void;
   onUpdateDriverStatus: (tripId: string, status: Trip['driverLiveStatus']) => void;
   onUpdatePassengerStatus: (requestId: string, status: TripRequest['passengerLiveStatus']) => void;
+  onDeleteTrip?: (tripId: string) => void;
 }
 
 export const TripDetailsModal: React.FC<Props> = ({
@@ -24,6 +25,7 @@ export const TripDetailsModal: React.FC<Props> = ({
   onRejectRequest,
   onUpdateDriverStatus,
   onUpdatePassengerStatus,
+  onDeleteTrip,
 }) => {
   if (!isOpen || !trip) return null;
 
@@ -36,6 +38,13 @@ export const TripDetailsModal: React.FC<Props> = ({
   const handleDriverStatusChange = (status: NonNullable<Trip['driverLiveStatus']>) => {
     setLocalDriverStatus(status);
     onUpdateDriverStatus(trip.id, status);
+  };
+
+  const handleDelete = () => {
+    if (window.confirm('Ви дійсно бажаєте видалити цю поїздку?')) {
+      if (onDeleteTrip) onDeleteTrip(trip.id);
+      onClose();
+    }
   };
 
   return (
@@ -160,7 +169,7 @@ export const TripDetailsModal: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Passengers List & Requests (Driver / Passenger View) */}
+        {/* Passengers List & Requests */}
         <div>
           <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '10px', color: 'var(--text-muted)' }}>
             Пасажири та заявки колег ({tripRequests.filter(r => r.status === 'approved').length} підтверджено)
@@ -180,6 +189,11 @@ export const TripDetailsModal: React.FC<Props> = ({
                   </div>
                   <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
                     Точка: {req.pickupSpot} • {req.requestedSeats} місце
+                    {req.passengerTelegram && (
+                      <span style={{ color: '#0088cc', marginLeft: '6px', fontWeight: '600' }}>
+                        (@{req.passengerTelegram})
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -198,7 +212,13 @@ export const TripDetailsModal: React.FC<Props> = ({
           )}
         </div>
 
-        <div style={{ marginTop: '20px', paddingTop: '12px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ marginTop: '20px', paddingTop: '12px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {isDriver ? (
+            <button className="btn btn-danger" style={{ fontSize: '12px', padding: '8px 12px' }} onClick={handleDelete}>
+              <Trash2 size={15} /> Видалити поїздку
+            </button>
+          ) : <div />}
+
           <button className="btn btn-secondary" onClick={onClose}>
             Закрити
           </button>

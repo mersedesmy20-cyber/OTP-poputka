@@ -16,7 +16,6 @@ import {
   INITIAL_DISTRICTS,
   INITIAL_OFFICES,
   INITIAL_SETTINGS,
-  INITIAL_TRIPS,
   INITIAL_SUBSCRIPTIONS,
   INITIAL_NOTIFICATIONS
 } from './mockData';
@@ -53,7 +52,6 @@ const KEYS = {
   COMPLAINTS: 'otp_carpool_complaints',
 };
 
-// Helper to resolve current user (detecting Telegram WebApp User automatically)
 function getTelegramUser(): Partial<UserProfile> | null {
   try {
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
@@ -111,13 +109,11 @@ function setItem<T>(key: string, value: T): void {
 }
 
 export const StorageService = {
-  // User Profile & Role Mode
   getUser(): UserProfile {
     const storedUser = getItem<UserProfile>(KEYS.USER, DEFAULT_FALLBACK_USER);
     const tgData = getTelegramUser();
 
     if (tgData) {
-      // Auto-update stored profile with live Telegram account data
       const mergedUser: UserProfile = {
         ...storedUser,
         id: tgData.id || storedUser.id,
@@ -182,7 +178,7 @@ export const StorageService = {
 
   // Trips
   getTrips(): Trip[] {
-    return getItem<Trip[]>(KEYS.TRIPS, INITIAL_TRIPS);
+    return getItem<Trip[]>(KEYS.TRIPS, []);
   },
   addTrip(trip: Trip): void {
     const list = this.getTrips();
@@ -199,6 +195,18 @@ export const StorageService = {
       setItem(KEYS.TRIPS, list);
     }
   },
+  deleteTrip(tripId: string): void {
+    const list = this.getTrips().filter(t => t.id !== tripId);
+    setItem(KEYS.TRIPS, list);
+
+    // Also delete associated requests
+    const reqs = this.getRequests().filter(r => r.tripId !== tripId);
+    setItem(KEYS.REQUESTS, reqs);
+  },
+  clearAllTrips(): void {
+    setItem(KEYS.TRIPS, []);
+    setItem(KEYS.REQUESTS, []);
+  },
 
   // Requests
   getRequests(): TripRequest[] {
@@ -211,11 +219,12 @@ export const StorageService = {
 
     const trip = this.getTrips().find(t => t.id === req.tripId);
     if (trip) {
+      const tgNotice = req.passengerTelegram ? ` (@${req.passengerTelegram})` : '';
       this.addNotification({
         id: 'notif_' + Date.now(),
         userId: trip.driverId,
-        title: '📩 Нова заявка на поїздку!',
-        message: `Колега ${req.passengerName} бажає забронювати ${req.requestedSeats} місце від точки: ${req.pickupSpot}`,
+        title: '📩 Нове бронювання місця!',
+        message: `Колега ${req.passengerName}${tgNotice} забронював(ла) ${req.requestedSeats} місце від точки: ${req.pickupSpot}`,
         type: 'request_new',
         tripId: trip.id,
         isRead: false,
@@ -241,7 +250,7 @@ export const StorageService = {
         this.addNotification({
           id: 'notif_' + Date.now(),
           userId: req.passengerId,
-          title: '🎉 Заявку підтверджено!',
+          title: '🎉 Ваше місце підтверджено!',
           message: `Водій ${trip.driverName} підтвердив ваше місце на поїздку (${trip.departureTime}, ${trip.originDistrictName} -> ${trip.destinationOfficeName})`,
           type: 'request_approved',
           tripId: trip.id,
@@ -302,7 +311,6 @@ export const StorageService = {
     setItem(KEYS.SETTINGS, settings);
   },
 
-  // Internal Subscribers notifier
   notifySubscribers(trip: Trip): void {
     const subs = this.getSubscriptions();
     subs.forEach(sub => {
@@ -321,7 +329,6 @@ export const StorageService = {
     });
   },
 
-  // Reset to initial mock state
   resetAll(): void {
     localStorage.removeItem(KEYS.USER);
     localStorage.removeItem(KEYS.ROLE_MODE);

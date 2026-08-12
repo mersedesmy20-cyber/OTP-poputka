@@ -446,6 +446,11 @@ export const App: React.FC = () => {
         onRejectRequest={handleRejectRequest}
         onUpdateDriverStatus={handleUpdateDriverStatus}
         onUpdatePassengerStatus={handleUpdatePassengerStatus}
+        onDeleteTrip={(tripId) => {
+          StorageService.deleteTrip(tripId);
+          setTrips(StorageService.getTrips());
+          setRequests(StorageService.getRequests());
+        }}
       />
 
       <TelegramBotModal
