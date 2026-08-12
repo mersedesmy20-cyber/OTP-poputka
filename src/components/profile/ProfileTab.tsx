@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import type { UserProfile, Vehicle, District } from '../../types';
-import { Car, Plus, Trash2, CheckCircle2, RefreshCw, Mail, Phone, MessageCircle } from 'lucide-react';
+import { Car, Plus, Trash2, CheckCircle2, RefreshCw, Mail, Phone, MessageCircle, Edit3, Save, Bot } from 'lucide-react';
 
 interface Props {
   user: UserProfile;
   vehicles: Vehicle[];
   districts: District[];
+  onSaveProfile: (updatedUser: UserProfile) => void;
   onAddVehicle: (v: Vehicle) => void;
   onDeleteVehicle: (id: string) => void;
   onResetAllData: () => void;
@@ -14,16 +15,44 @@ interface Props {
 export const ProfileTab: React.FC<Props> = ({
   user,
   vehicles,
+  districts,
+  onSaveProfile,
   onAddVehicle,
   onDeleteVehicle,
   onResetAllData,
 }) => {
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [name, setName] = useState(user.name);
+  const [surname, setSurname] = useState(user.surname);
+  const [department, setDepartment] = useState(user.department || 'ОТП Банк');
+  const [email, setEmail] = useState(user.email || '');
+  const [phone, setPhone] = useState(user.phone || '');
+  const [telegramUsername, setTelegramUsername] = useState(user.telegramUsername || '');
+  const [districtId, setDistrictId] = useState(user.districtId || districts[0]?.id || '');
+
   const [showAddCar, setShowAddCar] = useState(false);
   const [make, setMake] = useState('Toyota');
   const [model, setModel] = useState('Camry');
   const [color, setColor] = useState('Чорний');
   const [plateNumber, setPlateNumber] = useState('AA 5500 OP');
   const [seats] = useState(4);
+
+  const isTelegramSession = !!window.Telegram?.WebApp?.initDataUnsafe?.user;
+
+  const handleSaveProfileSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSaveProfile({
+      ...user,
+      name,
+      surname,
+      department,
+      email,
+      phone,
+      telegramUsername,
+      districtId,
+    });
+    setIsEditingProfile(false);
+  };
 
   const handleCreateCar = (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,7 +74,7 @@ export const ProfileTab: React.FC<Props> = ({
       {/* Profile Card */}
       <div className="card" style={{ textAlign: 'center', position: 'relative' }}>
         <img
-          src={user.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'}
+          src={user.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
           alt={user.name}
           style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--accent-green)', margin: '0 auto 12px auto' }}
         />
@@ -57,25 +86,89 @@ export const ProfileTab: React.FC<Props> = ({
         </p>
 
         <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-          <span className="badge badge-green">
-            <CheckCircle2 size={12} /> Корпоративна пошта підтверджена
-          </span>
-          <span className="badge badge-blue">
-            🏆 {user.completedTripsCount} успішних поїздок
-          </span>
+          {isTelegramSession ? (
+            <span className="badge badge-green">
+              <Bot size={13} /> Telegram підключено ({user.telegramUsername ? `@${user.telegramUsername}` : 'Без username'})
+            </span>
+          ) : (
+            <span className="badge badge-green">
+              <CheckCircle2 size={12} /> Корпоративна пошта підтверджена
+            </span>
+          )}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left', background: 'var(--bg-primary)', padding: '12px', borderRadius: 'var(--radius-md)', fontSize: '13px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Mail size={15} color="var(--accent-green)" /> {user.email}
+        {/* Profile Edit Form or Display */}
+        {isEditingProfile ? (
+          <form onSubmit={handleSaveProfileSubmit} style={{ textAlign: 'left', background: 'var(--bg-primary)', padding: '14px', borderRadius: 'var(--radius-md)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="input-group">
+                <label className="input-label">Ім'я</label>
+                <input type="text" className="input-field" value={name} onChange={(e) => setName(e.target.value)} required />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Прізвище</label>
+                <input type="text" className="input-field" value={surname} onChange={(e) => setSurname(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">Підрозділ / Департамент</label>
+              <input type="text" className="input-field" value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="напр. IT Департамент" />
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">Корпоративний Email</label>
+              <input type="email" className="input-field" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="input-group">
+                <label className="input-label">Телефон</label>
+                <input type="text" className="input-field" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Telegram Username</label>
+                <input type="text" className="input-field" value={telegramUsername} onChange={(e) => setTelegramUsername(e.target.value)} placeholder="без @" />
+              </div>
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">Основний район мешкання</label>
+              <select className="input-field" value={districtId} onChange={(e) => setDistrictId(e.target.value)}>
+                {districts.map(d => (
+                  <option key={d.id} value={d.id}>{d.name} ({d.cityPart})</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+              <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setIsEditingProfile(false)}>
+                Скасувати
+              </button>
+              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                <Save size={16} /> Зберегти
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left', background: 'var(--bg-primary)', padding: '12px', borderRadius: 'var(--radius-md)', fontSize: '13px', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Mail size={15} color="var(--accent-green)" /> {user.email}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Phone size={15} color="var(--accent-cyan)" /> {user.phone || 'Не вказано'}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MessageCircle size={15} color="#0088cc" /> {user.telegramUsername ? `@${user.telegramUsername}` : 'Не вказано'}
+              </div>
+            </div>
+
+            <button className="btn btn-secondary" style={{ width: '100%', fontSize: '13px' }} onClick={() => setIsEditingProfile(true)}>
+              <Edit3 size={15} /> Редагувати свій профіль
+            </button>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Phone size={15} color="var(--accent-cyan)" /> {user.phone || '+380 67 123 4567'}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <MessageCircle size={15} color="#0088cc" /> @{user.telegramUsername || 'alex_kovalenko_otp'}
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Vehicle Garage */}

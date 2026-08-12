@@ -374,6 +374,10 @@ export const App: React.FC = () => {
             user={user}
             vehicles={vehicles}
             districts={districts}
+            onSaveProfile={(updated) => {
+              StorageService.saveUser(updated);
+              setUser(StorageService.getUser());
+            }}
             onAddVehicle={(v) => {
               StorageService.addVehicle(v);
               setVehicles(StorageService.getVehicles());

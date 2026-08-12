@@ -12,7 +12,6 @@ import type {
   Complaint
 } from '../types';
 import {
-  INITIAL_USER,
   INITIAL_VEHICLES,
   INITIAL_DISTRICTS,
   INITIAL_OFFICES,
@@ -21,6 +20,24 @@ import {
   INITIAL_SUBSCRIPTIONS,
   INITIAL_NOTIFICATIONS
 } from './mockData';
+
+declare global {
+  interface Window {
+    Telegram?: {
+      WebApp?: {
+        initDataUnsafe?: {
+          user?: {
+            id: number;
+            first_name: string;
+            last_name?: string;
+            username?: string;
+            photo_url?: string;
+          };
+        };
+      };
+    };
+  }
+}
 
 const KEYS = {
   USER: 'otp_carpool_user',
@@ -36,7 +53,44 @@ const KEYS = {
   COMPLAINTS: 'otp_carpool_complaints',
 };
 
-// Helper for local storage parsing with default fallback
+// Helper to resolve current user (detecting Telegram WebApp User automatically)
+function getTelegramUser(): Partial<UserProfile> | null {
+  try {
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    if (tgUser) {
+      return {
+        id: 'tg_' + tgUser.id,
+        name: tgUser.first_name || 'Співробітник',
+        surname: tgUser.last_name || '',
+        telegramUsername: tgUser.username || '',
+        avatarUrl: tgUser.photo_url || undefined,
+      };
+    }
+  } catch (e) {
+    console.error('Error getting Telegram user', e);
+  }
+  return null;
+}
+
+const DEFAULT_FALLBACK_USER: UserProfile = {
+  id: 'usr_me',
+  name: 'Співробітник',
+  surname: 'ОТП Банк',
+  email: 'employee@otpbank.com.ua',
+  phone: '+380 67 000 0000',
+  telegramUsername: 'otp_colleague',
+  department: 'ГО Жилянська 43',
+  districtId: 'dist_troieshchyna',
+  officeId: 'off_zhylianska',
+  avatarUrl: undefined,
+  isConfirmed: true,
+  completedTripsCount: 0,
+  cancelledTripsCount: 0,
+  noShowCount: 0,
+  preferredRoleMode: 'passenger',
+  isAdmin: true,
+};
+
 function getItem<T>(key: string, defaultValue: T): T {
   try {
     const item = localStorage.getItem(key);
@@ -59,14 +113,30 @@ function setItem<T>(key: string, value: T): void {
 export const StorageService = {
   // User Profile & Role Mode
   getUser(): UserProfile {
-    return getItem<UserProfile>(KEYS.USER, INITIAL_USER);
+    const storedUser = getItem<UserProfile>(KEYS.USER, DEFAULT_FALLBACK_USER);
+    const tgData = getTelegramUser();
+
+    if (tgData) {
+      // Auto-update stored profile with live Telegram account data
+      const mergedUser: UserProfile = {
+        ...storedUser,
+        id: tgData.id || storedUser.id,
+        name: tgData.name || storedUser.name,
+        surname: tgData.surname !== undefined ? tgData.surname : storedUser.surname,
+        telegramUsername: tgData.telegramUsername || storedUser.telegramUsername,
+        avatarUrl: tgData.avatarUrl || storedUser.avatarUrl,
+      };
+      return mergedUser;
+    }
+
+    return storedUser;
   },
   saveUser(user: UserProfile): void {
     setItem(KEYS.USER, user);
   },
 
   getRoleMode(): UserRoleMode {
-    return getItem<UserRoleMode>(KEYS.ROLE_MODE, INITIAL_USER.preferredRoleMode);
+    return getItem<UserRoleMode>(KEYS.ROLE_MODE, 'passenger');
   },
   setRoleMode(mode: UserRoleMode): void {
     setItem(KEYS.ROLE_MODE, mode);
@@ -119,7 +189,6 @@ export const StorageService = {
     list.unshift(trip);
     setItem(KEYS.TRIPS, list);
 
-    // Auto notify subscribers matching this trip
     this.notifySubscribers(trip);
   },
   updateTrip(trip: Trip): void {
@@ -140,7 +209,6 @@ export const StorageService = {
     list.unshift(req);
     setItem(KEYS.REQUESTS, list);
 
-    // Trigger notification to driver
     const trip = this.getTrips().find(t => t.id === req.tripId);
     if (trip) {
       this.addNotification({
@@ -164,14 +232,12 @@ export const StorageService = {
 
       const trip = this.getTrips().find(t => t.id === req.tripId);
       if (trip && status === 'approved') {
-        // Decrease available seats
         trip.availableSeats = Math.max(0, trip.availableSeats - req.requestedSeats);
         if (trip.availableSeats === 0) {
           trip.status = 'FULL';
         }
         this.updateTrip(trip);
 
-        // Notify passenger
         this.addNotification({
           id: 'notif_' + Date.now(),
           userId: req.passengerId,
