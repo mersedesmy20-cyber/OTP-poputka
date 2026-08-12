@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StorageService } from './services/storage';
-import type { UserProfile, UserRoleMode, Trip, TripRequest, Vehicle, District, Office, AppSettings } from './types';
+import type { UserProfile, UserRoleMode, Trip, TripRequest, Vehicle, District, Office, AppSettings, AppNotification } from './types';
 import { RoleSwitchBanner } from './components/RoleSwitchBanner';
 import { TripCard } from './components/trips/TripCard';
 import { TripFilter } from './components/trips/TripFilter';
@@ -18,7 +18,11 @@ import {
   User,
   Bot,
   Shield,
-  Sparkles
+  Sparkles,
+  Bell,
+  CheckCircle2,
+  X,
+  Info
 } from 'lucide-react';
 import './styles/theme.css';
 
@@ -32,13 +36,25 @@ export const App: React.FC = () => {
   const [districts, setDistricts] = useState<District[]>(StorageService.getDistricts());
   const [offices, setOffices] = useState<Office[]>(StorageService.getOffices());
   const [settings, setSettings] = useState<AppSettings>(StorageService.getSettings());
+  const [notifications, setNotifications] = useState<AppNotification[]>(StorageService.getNotifications());
 
   // UI Active Navigation & Modals State
   const [activeTab, setActiveTab] = useState<'home' | 'search' | 'my_trips' | 'profile'>('home');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [selectedTripDetails, setSelectedTripDetails] = useState<Trip | null>(null);
+
+  // Toast Notification State
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 4000);
+  };
 
   // Filters State
   const [selectedDistrictId, setSelectedDistrictId] = useState<string>('');
@@ -56,6 +72,7 @@ export const App: React.FC = () => {
       setDistricts(StorageService.getDistricts());
       setOffices(StorageService.getOffices());
       setSettings(StorageService.getSettings());
+      setNotifications(StorageService.getNotifications());
     };
 
     window.addEventListener('otp_storage_updated', handleStorageChange);
@@ -71,9 +88,18 @@ export const App: React.FC = () => {
   const handleCreateTrip = (newTrip: Trip) => {
     StorageService.addTrip(newTrip);
     setTrips(StorageService.getTrips());
+    showToast('🎉 Поїздку успішно опубліковано для колег!');
   };
 
   const handleBookSeat = (trip: Trip) => {
+    // Prevent duplicate booking
+    const existingReq = requests.find(r => r.tripId === trip.id && r.passengerId === user.id);
+    if (existingReq) {
+      showToast('⚠️ Ви вже забронювали місце на цю поїздку!');
+      setSelectedTripDetails(trip);
+      return;
+    }
+
     const pickupSpot = trip.stops[0]?.name || trip.originSpot;
     const newRequest: TripRequest = {
       id: 'req_' + Date.now(),
@@ -98,6 +124,9 @@ export const App: React.FC = () => {
       StorageService.updateRequestStatus(newRequest.id, 'approved');
       setRequests(StorageService.getRequests());
       setTrips(StorageService.getTrips());
+      showToast(`✅ Ваше місце на поїздку (${trip.departureTime}) автоматично підтверджено!`);
+    } else {
+      showToast(`📩 Заявку відправлено водію ${trip.driverName}! Очікуйте підтвердження.`);
     }
 
     setSelectedTripDetails(trip);
@@ -107,11 +136,13 @@ export const App: React.FC = () => {
     StorageService.updateRequestStatus(requestId, 'approved');
     setRequests(StorageService.getRequests());
     setTrips(StorageService.getTrips());
+    showToast('✅ Заявку пасажира підтверджено!');
   };
 
   const handleRejectRequest = (requestId: string) => {
     StorageService.updateRequestStatus(requestId, 'rejected');
     setRequests(StorageService.getRequests());
+    showToast('❌ Заявку відхилено.');
   };
 
   const handleUpdateDriverStatus = (tripId: string, status: Trip['driverLiveStatus']) => {
@@ -120,6 +151,7 @@ export const App: React.FC = () => {
       trip.driverLiveStatus = status;
       StorageService.updateTrip(trip);
       setTrips(StorageService.getTrips());
+      showToast(`📍 Статус водія оновлено: ${status === 'departed' ? 'Ви вирушили!' : status === 'arrived' ? 'Ви на точці!' : 'Затримуюсь'}`);
     }
   };
 
@@ -133,6 +165,7 @@ export const App: React.FC = () => {
         list[idx] = req;
         localStorage.setItem('otp_carpool_requests', JSON.stringify(list));
         window.dispatchEvent(new Event('otp_storage_updated'));
+        showToast('📍 Статус пасажира оновлено!');
       }
     }
   };
@@ -146,9 +179,20 @@ export const App: React.FC = () => {
   });
 
   const userDistrictObj = districts.find(d => d.id === user.districtId);
+  const unreadNotifsCount = notifications.filter(n => !n.isRead).length;
 
   return (
     <div className="app-container">
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="toast-container">
+          <div className="toast-item">
+            <CheckCircle2 size={20} color="var(--accent-green)" />
+            <span style={{ flex: 1 }}>{toastMessage}</span>
+          </div>
+        </div>
+      )}
+
       {/* Top App Header */}
       <header className="top-bar">
         <div className="logo-group">
@@ -160,6 +204,17 @@ export const App: React.FC = () => {
         </div>
 
         <div className="header-actions">
+          {/* Notifications Bell */}
+          <button
+            className="icon-btn"
+            style={{ color: unreadNotifsCount > 0 ? 'var(--accent-green)' : 'var(--text-main)' }}
+            onClick={() => setIsNotificationsOpen(true)}
+            title="Сповіщення"
+          >
+            <Bell size={20} />
+            {unreadNotifsCount > 0 && <span className="badge-dot" />}
+          </button>
+
           {/* Telegram Bot Simulation launch button */}
           <button
             className="icon-btn"
@@ -193,7 +248,7 @@ export const App: React.FC = () => {
           onClick={() => setIsTelegramModalOpen(true)}
           style={{ background: 'none', border: 'none', color: 'var(--text-main)', fontSize: '12px', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}
         >
-          @otp_ride_bot
+          @OTPTravelHubbot
         </button>
       </div>
 
@@ -251,14 +306,28 @@ export const App: React.FC = () => {
               </h3>
             </div>
 
-            {/* Trip Cards Feed */}
+            {/* Trip Cards Feed or Onboarding empty state */}
             {filteredTrips.length === 0 ? (
-              <div className="card" style={{ textAlign: 'center', padding: '30px 16px' }}>
-                <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '12px' }}>
-                  Поїздок за вибраними фільтрами поки немає.
+              <div className="card" style={{ textAlign: 'center', padding: '24px 16px' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-green)', marginBottom: '12px' }}>
+                  <Info size={24} />
+                </div>
+                <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '6px' }}>
+                  Вітаємо в корпоративному сервісі «Їдемо Разом»!
+                </h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginBottom: '16px', lineHeight: '1.4' }}>
+                  Поїздок за вибраним фільтром поки немає. Станьте першим, хто запропонує поїздку колегам до ГО Жилянська 43!
                 </p>
+
+                <div style={{ background: 'var(--bg-primary)', padding: '14px', borderRadius: 'var(--radius-md)', textAlign: 'left', fontSize: '12px', marginBottom: '16px' }}>
+                  <div style={{ fontWeight: '700', marginBottom: '8px', color: 'var(--text-main)' }}>Як це працює:</div>
+                  <div style={{ marginBottom: '6px' }}>1. 🚗 <strong>Якщо ви за кермом</strong> — опублікуйте графік «Через день» або вкажіть ваш час виїзду.</div>
+                  <div style={{ marginBottom: '6px' }}>2. 🚶‍♂️ <strong>Якщо ви пасажир</strong> — забронюйте місце в авто колеги з вашого району.</div>
+                  <div>3. 💬 <strong>Зв'язок у 1 клік</strong> — контакти та Telegram водія/пасажира відкриваються одразу.</div>
+                </div>
+
                 <button className="btn btn-primary" onClick={() => setIsCreateModalOpen(true)}>
-                  <PlusCircle size={16} /> Створити першу поїздку
+                  <PlusCircle size={18} /> Створити першу поїздку
                 </button>
               </div>
             ) : (
@@ -298,16 +367,22 @@ export const App: React.FC = () => {
               Результати пошуку ({filteredTrips.length})
             </div>
 
-            {filteredTrips.map(trip => (
-              <TripCard
-                key={trip.id}
-                trip={trip}
-                userRequests={requests}
-                onBookSeat={handleBookSeat}
-                onOpenDetails={(t) => setSelectedTripDetails(t)}
-                currentUserId={user.id}
-              />
-            ))}
+            {filteredTrips.length === 0 ? (
+              <div className="card" style={{ textAlign: 'center', padding: '24px 16px' }}>
+                <p style={{ color: 'var(--text-dim)', fontSize: '13px' }}>Нічого не знайдено за вказаними фільтрами.</p>
+              </div>
+            ) : (
+              filteredTrips.map(trip => (
+                <TripCard
+                  key={trip.id}
+                  trip={trip}
+                  userRequests={requests}
+                  onBookSeat={handleBookSeat}
+                  onOpenDetails={(t) => setSelectedTripDetails(t)}
+                  currentUserId={user.id}
+                />
+              ))
+            )}
           </div>
         )}
 
@@ -377,14 +452,17 @@ export const App: React.FC = () => {
             onSaveProfile={(updated) => {
               StorageService.saveUser(updated);
               setUser(StorageService.getUser());
+              showToast('Профіль успішно збережено!');
             }}
             onAddVehicle={(v) => {
               StorageService.addVehicle(v);
               setVehicles(StorageService.getVehicles());
+              showToast('🚗 Автомобіль додано до гаража!');
             }}
             onDeleteVehicle={(id) => {
               StorageService.deleteVehicle(id);
               setVehicles(StorageService.getVehicles());
+              showToast('Автомобіль видалено.');
             }}
             onResetAllData={() => {
               StorageService.resetAll();
@@ -420,6 +498,34 @@ export const App: React.FC = () => {
         </button>
       </nav>
 
+      {/* Notifications Modal */}
+      {isNotificationsOpen && (
+        <div className="modal-overlay" onClick={() => setIsNotificationsOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Bell color="var(--accent-green)" /> Сповіщення
+              </h2>
+              <button onClick={() => setIsNotificationsOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            {notifications.length === 0 ? (
+              <p style={{ fontSize: '13px', color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>У вас немає нових сповіщень.</p>
+            ) : (
+              notifications.map(n => (
+                <div key={n.id} style={{ padding: '12px', background: n.isRead ? 'var(--bg-primary)' : 'rgba(16, 185, 129, 0.08)', borderLeft: n.isRead ? 'none' : '3px solid var(--accent-green)', borderRadius: 'var(--radius-md)', marginBottom: '8px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '14px' }}>{n.title}</div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>{n.message}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '6px' }}>{new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Modals */}
       <TripFormModal
         isOpen={isCreateModalOpen}
@@ -450,6 +556,7 @@ export const App: React.FC = () => {
           StorageService.deleteTrip(tripId);
           setTrips(StorageService.getTrips());
           setRequests(StorageService.getRequests());
+          showToast('Поїздку видалено.');
         }}
       />
 
@@ -469,10 +576,12 @@ export const App: React.FC = () => {
         onAddDistrict={(d) => {
           StorageService.addDistrict(d);
           setDistricts(StorageService.getDistricts());
+          showToast('Новий район додано!');
         }}
         onSaveSettings={(s) => {
           StorageService.saveSettings(s);
           setSettings(StorageService.getSettings());
+          showToast('Налаштування збережено!');
         }}
       />
     </div>

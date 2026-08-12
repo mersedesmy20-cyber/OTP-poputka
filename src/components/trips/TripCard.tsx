@@ -155,7 +155,7 @@ export const TripCard: React.FC<Props> = ({
           </button>
         ) : (
           <button className="btn btn-secondary" style={{ flex: 1 }} disabled>
-            Мець немає
+            Місць немає
           </button>
         )}
       </div>

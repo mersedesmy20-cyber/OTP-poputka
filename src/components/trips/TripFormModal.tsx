@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { District, Office, Vehicle, Trip, RecurrenceType, TripType, CompensationType } from '../../types';
-import { X, Car, MapPin, Clock, Repeat, Fuel, Plus, Trash2, Check } from 'lucide-react';
+import { X, Car, MapPin, Clock, Repeat, Fuel, Plus, Trash2, Check, AlertCircle } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -33,22 +33,16 @@ export const TripFormModal: React.FC<Props> = ({
 }) => {
   if (!isOpen) return null;
 
-  const defaultVehicle = vehicles[0] || {
-    id: 'veh_default',
-    make: 'Skoda',
-    model: 'Octavia',
-    color: 'Сірий',
-    plateNumber: 'KA 7788 CB',
-    seats: 4,
-  };
+  const hasVehicles = vehicles.length > 0;
 
   const [tripType, setTripType] = useState<TripType>('to_office');
   const [districtId, setDistrictId] = useState<string>(districts[0]?.id || '');
   const [originSpot, setOriginSpot] = useState<string>('ТРЦ Район (зупинка)');
   const [officeId] = useState<string>(offices[0]?.id || '');
   const [departureTime, setDepartureTime] = useState<string>('07:45');
+  const [estimatedArrivalTime, setEstimatedArrivalTime] = useState<string>('08:30');
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('every_other_day');
-  const [vehicleId, setVehicleId] = useState<string>(defaultVehicle.id);
+  const [vehicleId, setVehicleId] = useState<string>(vehicles[0]?.id || '');
   const [availableSeats, setAvailableSeats] = useState<number>(3);
   const [compensationType, setCompensationType] = useState<CompensationType>('fixed_contribution');
   const [compensationAmount, setCompensationAmount] = useState<number>(60);
@@ -59,7 +53,7 @@ export const TripFormModal: React.FC<Props> = ({
 
   const selectedDistrict = districts.find(d => d.id === districtId) || districts[0];
   const selectedOffice = offices.find(o => o.id === officeId) || offices[0];
-  const selectedVehicle = vehicles.find(v => v.id === vehicleId) || defaultVehicle;
+  const selectedVehicle = vehicles.find(v => v.id === vehicleId) || vehicles[0];
 
   const handleAddStop = () => {
     if (stops.length >= 5) return;
@@ -83,6 +77,13 @@ export const TripFormModal: React.FC<Props> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!hasVehicles || !selectedVehicle) {
+      alert('Будь ласка, спочатку додайте автомобіль у вкладці "Профіль"!');
+      return;
+    }
+
+    const isToOffice = tripType === 'to_office';
+
     const newTrip: Trip = {
       id: 'trip_' + Date.now(),
       driverId: currentUserId,
@@ -96,11 +97,11 @@ export const TripFormModal: React.FC<Props> = ({
       vehiclePlate: selectedVehicle.plateNumber,
       tripType,
       originDistrictId: selectedDistrict.id,
-      originDistrictName: selectedDistrict.name,
-      originSpot,
-      destinationOfficeId: selectedOffice.id,
-      destinationOfficeName: selectedOffice.name,
-      destinationAddress: selectedOffice.address,
+      originDistrictName: isToOffice ? selectedDistrict.name : selectedOffice.name,
+      originSpot: isToOffice ? originSpot : 'ГО Жилянська 43 (Парковка)',
+      destinationOfficeId: isToOffice ? selectedOffice.id : selectedDistrict.id,
+      destinationOfficeName: isToOffice ? selectedOffice.name : `${selectedDistrict.name} (${originSpot})`,
+      destinationAddress: isToOffice ? selectedOffice.address : selectedDistrict.name,
       departureDate: new Date().toISOString().split('T')[0],
       departureTime,
       recurrence: {
@@ -119,9 +120,9 @@ export const TripFormModal: React.FC<Props> = ({
       comment,
       status: 'PUBLISHED',
       stops: [
-        { id: 's_start', name: originSpot, estimatedTime: departureTime, order: 1 },
+        { id: 's_start', name: isToOffice ? originSpot : 'ГО Жилянська 43', estimatedTime: departureTime, order: 1 },
         ...stops.map((s, idx) => ({ id: s.id, name: s.name || 'Проміжна зупинка', estimatedTime: s.estimatedTime || departureTime, order: idx + 2 })),
-        { id: 's_end', name: selectedOffice.name, estimatedTime: '08:35', order: stops.length + 2 }
+        { id: 's_end', name: isToOffice ? selectedOffice.name : originSpot, estimatedTime: estimatedArrivalTime, order: stops.length + 2 }
       ],
       createdAt: new Date().toISOString(),
     };
@@ -142,6 +143,17 @@ export const TripFormModal: React.FC<Props> = ({
           </button>
         </div>
 
+        {!hasVehicles && (
+          <div className="card" style={{ background: 'rgba(245, 158, 11, 0.1)', borderColor: 'var(--accent-warning)', margin: '0 0 16px 0', padding: '12px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-warning)', fontWeight: '700', fontSize: '14px' }}>
+              <AlertCircle size={18} /> У вас немає збереженого авто
+            </div>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+              Перед публікацією поїздки додайте авто в розділі <strong>Профіль ➡️ Гараж авто</strong>.
+            </p>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
           {/* Trip Type Selector */}
           <div className="input-group">
@@ -151,7 +163,10 @@ export const TripFormModal: React.FC<Props> = ({
                 type="button"
                 className={`btn ${tripType === 'to_office' ? 'btn-primary' : 'btn-secondary'}`}
                 style={{ flex: 1, fontSize: '13px', padding: '10px' }}
-                onClick={() => setTripType('to_office')}
+                onClick={() => {
+                  setTripType('to_office');
+                  setComment('Їду до ГО Жилянська 43. З радістю підвезу колег!');
+                }}
               >
                 🌅 Вранці до ГО Жилянська 43
               </button>
@@ -159,7 +174,12 @@ export const TripFormModal: React.FC<Props> = ({
                 type="button"
                 className={`btn ${tripType === 'from_office' ? 'btn-primary' : 'btn-secondary'}`}
                 style={{ flex: 1, fontSize: '13px', padding: '10px' }}
-                onClick={() => setTripType('from_office')}
+                onClick={() => {
+                  setTripType('from_office');
+                  setDepartureTime('18:15');
+                  setEstimatedArrivalTime('19:00');
+                  setComment('Назад з роботи у свій район. Підвезу колег!');
+                }}
               >
                 🌇 Увечері з ГО в район
               </button>
@@ -169,7 +189,9 @@ export const TripFormModal: React.FC<Props> = ({
           {/* District & Pickup Spot */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <div className="input-group">
-              <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><MapPin size={13} /> {tripType === 'to_office' ? 'Ваш район' : 'Офіс відправлення'}</label>
+              <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <MapPin size={13} /> {tripType === 'to_office' ? 'Ваш район відправлення' : 'Район призначення'}
+              </label>
               <select className="input-field" value={districtId} onChange={(e) => setDistrictId(e.target.value)}>
                 {districts.map(d => (
                   <option key={d.id} value={d.id}>{d.name}</option>
@@ -178,7 +200,9 @@ export const TripFormModal: React.FC<Props> = ({
             </div>
 
             <div className="input-group">
-              <label className="input-label">Точка зустрічі / Посадки</label>
+              <label className="input-label">
+                {tripType === 'to_office' ? 'Точка посадки в районі' : 'Точка висадки в районі'}
+              </label>
               <input
                 type="text"
                 className="input-field"
@@ -190,7 +214,7 @@ export const TripFormModal: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Departure Time & Recurrence (Highlight "Через день") */}
+          {/* Departure Time & Arrival Time & Recurrence */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <div className="input-group">
               <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Clock size={13} /> Час виїзду</label>
@@ -204,30 +228,45 @@ export const TripFormModal: React.FC<Props> = ({
             </div>
 
             <div className="input-group">
-              <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Repeat size={13} /> Регулярність поїздки</label>
-              <select
+              <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Clock size={13} /> Час прибуття</label>
+              <input
+                type="time"
                 className="input-field"
-                value={recurrenceType}
-                onChange={(e) => setRecurrenceType(e.target.value as RecurrenceType)}
-                style={{ border: recurrenceType === 'every_other_day' ? '2px solid var(--accent-green)' : undefined }}
-              >
-                <option value="every_other_day">🔄 Через день (робочі дні)</option>
-                <option value="workdays">📅 Щодня у робочі дні</option>
-                <option value="mon_wed_fri">📆 Понеділок / Середа / П'ятниця</option>
-                <option value="tue_thu">📆 Вівторок / Четвер</option>
-                <option value="single">⚡ Разова поїздка (сьогодні)</option>
-              </select>
+                value={estimatedArrivalTime}
+                onChange={(e) => setEstimatedArrivalTime(e.target.value)}
+                required
+              />
             </div>
+          </div>
+
+          <div className="input-group">
+            <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Repeat size={13} /> Регулярність поїздки</label>
+            <select
+              className="input-field"
+              value={recurrenceType}
+              onChange={(e) => setRecurrenceType(e.target.value as RecurrenceType)}
+              style={{ border: recurrenceType === 'every_other_day' ? '2px solid var(--accent-green)' : undefined }}
+            >
+              <option value="every_other_day">🔄 Через день (робочі дні)</option>
+              <option value="workdays">📅 Щодня у робочі дні</option>
+              <option value="mon_wed_fri">📆 Понеділок / Середа / П'ятниця</option>
+              <option value="tue_thu">📆 Вівторок / Четвер</option>
+              <option value="single">⚡ Разова поїздка (сьогодні)</option>
+            </select>
           </div>
 
           {/* Vehicle & Available Seats */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <div className="input-group">
               <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Car size={13} /> Автомобіль</label>
-              <select className="input-field" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
-                {vehicles.map(v => (
-                  <option key={v.id} value={v.id}>{v.make} {v.model} ({v.plateNumber})</option>
-                ))}
+              <select className="input-field" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} disabled={!hasVehicles}>
+                {hasVehicles ? (
+                  vehicles.map(v => (
+                    <option key={v.id} value={v.id}>{v.make} {v.model} ({v.plateNumber})</option>
+                  ))
+                ) : (
+                  <option value="">Немає доданих авто</option>
+                )}
               </select>
             </div>
 
@@ -338,7 +377,7 @@ export const TripFormModal: React.FC<Props> = ({
             <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>
               Скасувати
             </button>
-            <button type="submit" className="btn btn-primary" style={{ flex: 2 }}>
+            <button type="submit" className="btn btn-primary" style={{ flex: 2 }} disabled={!hasVehicles}>
               <Check size={18} /> Опублікувати поїздку
             </button>
           </div>
