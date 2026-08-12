@@ -242,9 +242,10 @@ export const StorageService = {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3500);
 
-      const [tripsRes, reqsRes] = await Promise.all([
+      const [tripsRes, reqsRes, notifsRes] = await Promise.all([
         fetch(`${CLOUD_API_BASE}/trips`, { signal: controller.signal }).catch(() => null),
-        fetch(`${CLOUD_API_BASE}/requests`, { signal: controller.signal }).catch(() => null)
+        fetch(`${CLOUD_API_BASE}/requests`, { signal: controller.signal }).catch(() => null),
+        fetch(`${CLOUD_API_BASE}/notifications`, { signal: controller.signal }).catch(() => null)
       ]);
 
       clearTimeout(timeoutId);
@@ -272,9 +273,27 @@ export const StorageService = {
         if (Array.isArray(cloudRequests)) {
           const localRequests = this.getRequests();
           const mergedReqMap = new Map<string, TripRequest>();
-          cloudRequests.forEach(r => mergedReqMap.set(r.id, r));
+
+          // Merge: remote cloud requests take precedence for status updates
           localRequests.forEach(r => mergedReqMap.set(r.id, r));
+          cloudRequests.forEach(r => mergedReqMap.set(r.id, r));
+
           setItem(KEYS.REQUESTS, Array.from(mergedReqMap.values()));
+        }
+      }
+
+      if (notifsRes && notifsRes.ok) {
+        const cloudNotifs: AppNotification[] = await notifsRes.json();
+        if (Array.isArray(cloudNotifs)) {
+          const currentUser = this.getUser();
+          const myCloudNotifs = cloudNotifs.filter(n => n.userId === currentUser.id);
+
+          const localNotifs = this.getNotifications();
+          const mergedNotifMap = new Map<string, AppNotification>();
+          localNotifs.forEach(n => mergedNotifMap.set(n.id, n));
+          myCloudNotifs.forEach(n => mergedNotifMap.set(n.id, n));
+
+          setItem(KEYS.NOTIFICATIONS, Array.from(mergedNotifMap.values()));
         }
       }
     } catch (e) {
@@ -319,6 +338,24 @@ export const StorageService = {
       clearTimeout(timeoutId);
     } catch (e) {
       console.warn('Error pushing request to cloud', e);
+    }
+  },
+
+  async syncNotificationToCloud(notif: AppNotification): Promise<void> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+      await fetch(`${CLOUD_API_BASE}/notifications`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(notif),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+    } catch (e) {
+      console.warn('Error pushing notification to cloud', e);
     }
   },
 
@@ -396,6 +433,7 @@ export const StorageService = {
     if (req) {
       req.status = status;
       setItem(KEYS.REQUESTS, requests);
+      this.syncRequestToCloud(req);
 
       const trip = this.getTrips().find(t => t.id === req.tripId);
       if (trip && status === 'approved') {
@@ -441,6 +479,7 @@ export const StorageService = {
     const list = this.getNotifications();
     list.unshift(notif);
     setItem(KEYS.NOTIFICATIONS, list);
+    this.syncNotificationToCloud(notif);
   },
   markNotificationRead(id: string): void {
     const list = this.getNotifications();

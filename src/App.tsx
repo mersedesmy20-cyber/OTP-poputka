@@ -125,22 +125,41 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const lastApprovedReqIds = new Set<string>();
+
+    const checkApprovalEvents = (reqList: TripRequest[]) => {
+      const myApproved = reqList.filter(r => r.passengerId === user.id && r.status === 'approved');
+      myApproved.forEach(r => {
+        if (!lastApprovedReqIds.has(r.id)) {
+          lastApprovedReqIds.add(r.id);
+          try {
+            window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success');
+          } catch(e) {}
+          showToast('🎉 Водій підтвердив ваше місце на поїздку!');
+        }
+      });
+    };
+
     // Initial fetch from global cloud store
     StorageService.syncFromCloud().then(cloudTrips => {
       setTrips(cloudTrips);
-      setRequests(StorageService.getRequests());
+      const reqs = StorageService.getRequests();
+      setRequests(reqs);
+      reqs.filter(r => r.passengerId === user.id && r.status === 'approved').forEach(r => lastApprovedReqIds.add(r.id));
     });
 
-    // Auto sync every 8 seconds across all devices
+    // Auto sync every 5 seconds across all devices
     const interval = setInterval(() => {
       StorageService.syncFromCloud().then(cloudTrips => {
         setTrips(cloudTrips);
-        setRequests(StorageService.getRequests());
+        const reqs = StorageService.getRequests();
+        setRequests(reqs);
+        checkApprovalEvents(reqs);
       });
-    }, 8000);
+    }, 5000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [user.id]);
 
   // Storage listener for live state updates
   useEffect(() => {

@@ -207,6 +207,18 @@ export const TripDetailsModal: React.FC<Props> = ({
                     </button>
                   </div>
                 )}
+
+                {isDriver && req.status === 'approved' && req.passengerTelegram && (
+                  <a
+                    href={`https://t.me/${req.passengerTelegram.replace('@', '')}?text=${encodeURIComponent(`Вітаю ${req.passengerName}! Я підтвердив(-ла) твоє місце на поїздку (${trip.departureTime}). До зустрічі на точці ${req.pickupSpot}!`)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '11px', padding: '6px 10px', color: '#0088cc', borderColor: 'rgba(0,136,204,0.4)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <MessageCircle size={14} /> Написати в Telegram
+                  </a>
+                )}
               </div>
             ))
           )}
