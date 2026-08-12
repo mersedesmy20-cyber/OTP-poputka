@@ -6,6 +6,7 @@ import { TripCard } from './components/trips/TripCard';
 import { TripFilter } from './components/trips/TripFilter';
 import { TripFormModal } from './components/trips/TripFormModal';
 import { TripDetailsModal } from './components/trips/TripDetailsModal';
+import { BookingModal } from './components/trips/BookingModal';
 import { TelegramBotModal } from './components/telegram/TelegramBotModal';
 import { AdminModal } from './components/admin/AdminModal';
 import { ProfileTab } from './components/profile/ProfileTab';
@@ -22,9 +23,19 @@ import {
   Bell,
   CheckCircle2,
   X,
-  Info
+  Info,
+  Sun,
+  Moon
 } from 'lucide-react';
 import './styles/theme.css';
+
+function triggerHaptic(type: 'light' | 'medium' | 'heavy' = 'medium') {
+  try {
+    window.Telegram?.WebApp?.HapticFeedback?.impactOccurred(type);
+  } catch (e) {
+    // optional fallback
+  }
+}
 
 export const App: React.FC = () => {
   // State from Storage Service
@@ -45,6 +56,32 @@ export const App: React.FC = () => {
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [selectedTripDetails, setSelectedTripDetails] = useState<Trip | null>(null);
+  const [bookingTripTarget, setBookingTripTarget] = useState<Trip | null>(null);
+
+  // Theme State
+  const [isLightTheme, setIsLightTheme] = useState<boolean>(() => {
+    return localStorage.getItem('otp_theme') === 'light';
+  });
+
+  const toggleTheme = () => {
+    triggerHaptic('light');
+    const newTheme = !isLightTheme;
+    setIsLightTheme(newTheme);
+    localStorage.setItem('otp_theme', newTheme ? 'light' : 'dark');
+    if (newTheme) {
+      document.body.classList.add('light-theme');
+    } else {
+      document.body.classList.remove('light-theme');
+    }
+  };
+
+  useEffect(() => {
+    if (isLightTheme) {
+      document.body.classList.add('light-theme');
+    } else {
+      document.body.classList.remove('light-theme');
+    }
+  }, [isLightTheme]);
 
   // Toast Notification State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -81,26 +118,32 @@ export const App: React.FC = () => {
 
   // Handlers
   const handleRoleChange = (newRole: UserRoleMode) => {
+    triggerHaptic('medium');
     setRoleMode(newRole);
     StorageService.setRoleMode(newRole);
   };
 
   const handleCreateTrip = (newTrip: Trip) => {
+    triggerHaptic('heavy');
     StorageService.addTrip(newTrip);
     setTrips(StorageService.getTrips());
     showToast('🎉 Поїздку успішно опубліковано для колег!');
   };
 
-  const handleBookSeat = (trip: Trip) => {
-    // Prevent duplicate booking
+  const handleOpenBookingModal = (trip: Trip) => {
+    triggerHaptic('light');
     const existingReq = requests.find(r => r.tripId === trip.id && r.passengerId === user.id);
     if (existingReq) {
       showToast('⚠️ Ви вже забронювали місце на цю поїздку!');
       setSelectedTripDetails(trip);
       return;
     }
+    setBookingTripTarget(trip);
+  };
 
-    const pickupSpot = trip.stops[0]?.name || trip.originSpot;
+  const handleConfirmBooking = (trip: Trip, requestedSeats: number, pickupSpot: string, note?: string) => {
+    triggerHaptic('heavy');
+    const finalPickupSpot = note?.trim() ? `${pickupSpot} (${note.trim()})` : pickupSpot;
     const newRequest: TripRequest = {
       id: 'req_' + Date.now(),
       tripId: trip.id,
@@ -110,8 +153,8 @@ export const App: React.FC = () => {
       passengerTelegram: user.telegramUsername,
       passengerPhone: user.phone,
       passengerDepartment: user.department,
-      pickupSpot,
-      requestedSeats: 1,
+      pickupSpot: finalPickupSpot,
+      requestedSeats,
       hasLuggage: false,
       status: trip.approvalMode === 'auto' ? 'approved' : 'pending',
       createdAt: new Date().toISOString(),
@@ -124,15 +167,16 @@ export const App: React.FC = () => {
       StorageService.updateRequestStatus(newRequest.id, 'approved');
       setRequests(StorageService.getRequests());
       setTrips(StorageService.getTrips());
-      showToast(`✅ Ваше місце на поїздку (${trip.departureTime}) автоматично підтверджено!`);
+      showToast(`✅ ${requestedSeats} місце(ця) на поїздку (${trip.departureTime}) підтверджено!`);
     } else {
-      showToast(`📩 Заявку відправлено водію ${trip.driverName}! Очікуйте підтвердження.`);
+      showToast(`📩 Заявку на ${requestedSeats} місць відправлено водію ${trip.driverName}!`);
     }
 
     setSelectedTripDetails(trip);
   };
 
   const handleApproveRequest = (requestId: string) => {
+    triggerHaptic('medium');
     StorageService.updateRequestStatus(requestId, 'approved');
     setRequests(StorageService.getRequests());
     setTrips(StorageService.getTrips());
@@ -140,12 +184,14 @@ export const App: React.FC = () => {
   };
 
   const handleRejectRequest = (requestId: string) => {
+    triggerHaptic('medium');
     StorageService.updateRequestStatus(requestId, 'rejected');
     setRequests(StorageService.getRequests());
     showToast('❌ Заявку відхилено.');
   };
 
   const handleUpdateDriverStatus = (tripId: string, status: Trip['driverLiveStatus']) => {
+    triggerHaptic('medium');
     const trip = trips.find(t => t.id === tripId);
     if (trip) {
       trip.driverLiveStatus = status;
@@ -156,6 +202,7 @@ export const App: React.FC = () => {
   };
 
   const handleUpdatePassengerStatus = (requestId: string, status: TripRequest['passengerLiveStatus']) => {
+    triggerHaptic('medium');
     const req = requests.find(r => r.id === requestId);
     if (req) {
       req.passengerLiveStatus = status;
@@ -167,6 +214,17 @@ export const App: React.FC = () => {
         window.dispatchEvent(new Event('otp_storage_updated'));
         showToast('📍 Статус пасажира оновлено!');
       }
+    }
+  };
+
+  const handleShareTrip = (trip: Trip) => {
+    triggerHaptic('light');
+    const text = `🚗 Поїздка з колегою (${trip.driverName}): ${trip.originDistrictName} ➡️ ${trip.destinationOfficeName} о ${trip.departureTime} (${trip.recurrence.label}).\nБронюйте у боті: https://t.me/OTPTravelHubbot`;
+    try {
+      navigator.clipboard.writeText(text);
+      showToast('🔗 Посилання скопійовано! Поділіться ним у чаті колег.');
+    } catch (e) {
+      showToast('🚗 Посилання готова для чату Telegram!');
     }
   };
 
@@ -204,11 +262,23 @@ export const App: React.FC = () => {
         </div>
 
         <div className="header-actions">
+          {/* Light / Dark Theme Switcher Button */}
+          <button
+            className="icon-btn"
+            onClick={toggleTheme}
+            title={isLightTheme ? 'Увімкнути Темну тему' : 'Увімкнути Світлу тему'}
+          >
+            {isLightTheme ? <Moon size={19} color="var(--accent-purple)" /> : <Sun size={19} color="var(--accent-warning)" />}
+          </button>
+
           {/* Notifications Bell */}
           <button
             className="icon-btn"
             style={{ color: unreadNotifsCount > 0 ? 'var(--accent-green)' : 'var(--text-main)' }}
-            onClick={() => setIsNotificationsOpen(true)}
+            onClick={() => {
+              triggerHaptic('light');
+              setIsNotificationsOpen(true);
+            }}
             title="Сповіщення"
           >
             <Bell size={20} />
@@ -219,7 +289,10 @@ export const App: React.FC = () => {
           <button
             className="icon-btn"
             style={{ color: '#0088cc', borderColor: 'rgba(0,136,204,0.4)' }}
-            onClick={() => setIsTelegramModalOpen(true)}
+            onClick={() => {
+              triggerHaptic('light');
+              setIsTelegramModalOpen(true);
+            }}
             title="Телеграм-бот"
           >
             <Bot size={20} />
@@ -230,7 +303,10 @@ export const App: React.FC = () => {
             <button
               className="icon-btn"
               style={{ color: 'var(--accent-warning)', borderColor: 'rgba(245,158,11,0.4)' }}
-              onClick={() => setIsAdminModalOpen(true)}
+              onClick={() => {
+                triggerHaptic('light');
+                setIsAdminModalOpen(true);
+              }}
               title="Адмін Панель"
             >
               <Shield size={19} />
@@ -276,8 +352,14 @@ export const App: React.FC = () => {
             <RoleSwitchBanner
               currentRole={roleMode}
               onSelectRole={handleRoleChange}
-              onOpenCreateModal={() => setIsCreateModalOpen(true)}
-              onOpenFilter={() => setActiveTab('search')}
+              onOpenCreateModal={() => {
+                triggerHaptic('light');
+                setIsCreateModalOpen(true);
+              }}
+              onOpenFilter={() => {
+                triggerHaptic('light');
+                setActiveTab('search');
+              }}
               userDistrictName={userDistrictObj?.name}
             />
 
@@ -336,8 +418,9 @@ export const App: React.FC = () => {
                   key={trip.id}
                   trip={trip}
                   userRequests={requests}
-                  onBookSeat={handleBookSeat}
+                  onBookSeat={handleOpenBookingModal}
                   onOpenDetails={(t) => setSelectedTripDetails(t)}
+                  onShareTrip={handleShareTrip}
                   currentUserId={user.id}
                 />
               ))
@@ -377,8 +460,9 @@ export const App: React.FC = () => {
                   key={trip.id}
                   trip={trip}
                   userRequests={requests}
-                  onBookSeat={handleBookSeat}
+                  onBookSeat={handleOpenBookingModal}
                   onOpenDetails={(t) => setSelectedTripDetails(t)}
+                  onShareTrip={handleShareTrip}
                   currentUserId={user.id}
                 />
               ))
@@ -474,25 +558,25 @@ export const App: React.FC = () => {
 
       {/* Bottom Telegram Mini App Navigation Bar */}
       <nav className="bottom-nav">
-        <button className={`nav-item ${activeTab === 'home' ? 'active' : ''}`} onClick={() => setActiveTab('home')}>
+        <button className={`nav-item ${activeTab === 'home' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('home'); }}>
           <Home size={20} />
           Головна
         </button>
-        <button className={`nav-item ${activeTab === 'search' ? 'active' : ''}`} onClick={() => setActiveTab('search')}>
+        <button className={`nav-item ${activeTab === 'search' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('search'); }}>
           <Search size={20} />
           Пошук
         </button>
 
         {/* Center Floating Create (+) Button */}
-        <button className="nav-create-btn" onClick={() => setIsCreateModalOpen(true)} title="Створити поїздку">
+        <button className="nav-create-btn" onClick={() => { triggerHaptic('medium'); setIsCreateModalOpen(true); }} title="Створити поїздку">
           <PlusCircle size={26} />
         </button>
 
-        <button className={`nav-item ${activeTab === 'my_trips' ? 'active' : ''}`} onClick={() => setActiveTab('my_trips')}>
+        <button className={`nav-item ${activeTab === 'my_trips' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('my_trips'); }}>
           <Car size={20} />
           Мої поїздки
         </button>
-        <button className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => setActiveTab('profile')}>
+        <button className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('profile'); }}>
           <User size={20} />
           Профіль
         </button>
@@ -526,6 +610,14 @@ export const App: React.FC = () => {
         </div>
       )}
 
+      {/* Booking Seat Modal */}
+      <BookingModal
+        isOpen={!!bookingTripTarget}
+        onClose={() => setBookingTripTarget(null)}
+        trip={bookingTripTarget}
+        onConfirmBooking={handleConfirmBooking}
+      />
+
       {/* Modals */}
       <TripFormModal
         isOpen={isCreateModalOpen}
@@ -553,6 +645,7 @@ export const App: React.FC = () => {
         onUpdateDriverStatus={handleUpdateDriverStatus}
         onUpdatePassengerStatus={handleUpdatePassengerStatus}
         onDeleteTrip={(tripId) => {
+          triggerHaptic('medium');
           StorageService.deleteTrip(tripId);
           setTrips(StorageService.getTrips());
           setRequests(StorageService.getRequests());

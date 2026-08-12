@@ -1,12 +1,13 @@
 import React from 'react';
 import type { Trip, TripRequest } from '../../types';
-import { Clock, MapPin, Car, MessageCircle, Repeat, CheckCircle2, User, Fuel } from 'lucide-react';
+import { Clock, MapPin, Car, MessageCircle, Repeat, CheckCircle2, User, Fuel, Share2 } from 'lucide-react';
 
 interface Props {
   trip: Trip;
   userRequests: TripRequest[];
   onBookSeat: (trip: Trip) => void;
   onOpenDetails: (trip: Trip) => void;
+  onShareTrip?: (trip: Trip) => void;
   currentUserId: string;
 }
 
@@ -15,6 +16,7 @@ export const TripCard: React.FC<Props> = ({
   userRequests,
   onBookSeat,
   onOpenDetails,
+  onShareTrip,
   currentUserId,
 }) => {
   const isDriver = trip.driverId === currentUserId;
@@ -76,19 +78,35 @@ export const TripCard: React.FC<Props> = ({
           </div>
         </div>
 
-        {trip.driverTelegram && (
-          <a
-            href={`https://t.me/${trip.driverTelegram.replace('@', '')}`}
-            target="_blank"
-            rel="noreferrer"
-            className="icon-btn"
-            title="Написати водію в Telegram"
-            onClick={(e) => e.stopPropagation()}
-            style={{ color: '#0088cc', borderColor: 'rgba(0,136,204,0.4)' }}
-          >
-            <MessageCircle size={18} />
-          </a>
-        )}
+        <div style={{ display: 'flex', gap: '4px' }}>
+          {onShareTrip && (
+            <button
+              className="icon-btn"
+              title="Поділитися поїздкою"
+              onClick={(e) => {
+                e.stopPropagation();
+                onShareTrip(trip);
+              }}
+              style={{ color: 'var(--accent-green)', borderColor: 'rgba(16,185,129,0.3)' }}
+            >
+              <Share2 size={16} />
+            </button>
+          )}
+
+          {trip.driverTelegram && (
+            <a
+              href={`https://t.me/${trip.driverTelegram.replace('@', '')}`}
+              target="_blank"
+              rel="noreferrer"
+              className="icon-btn"
+              title="Написати водію в Telegram"
+              onClick={(e) => e.stopPropagation()}
+              style={{ color: '#0088cc', borderColor: 'rgba(0,136,204,0.4)' }}
+            >
+              <MessageCircle size={18} />
+            </a>
+          )}
+        </div>
       </div>
 
       {/* Route Details */}
