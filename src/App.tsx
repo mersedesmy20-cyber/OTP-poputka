@@ -171,6 +171,10 @@ export const App: React.FC = () => {
     triggerHaptic('heavy');
     StorageService.addTrip(newTrip);
     setTrips(StorageService.getTrips());
+    setSelectedDistrictId('');
+    setSelectedTripType('');
+    setSelectedRecurrence('');
+    setActiveTab('home');
     showToast('🎉 Поїздку успішно опубліковано для колег!');
   };
 

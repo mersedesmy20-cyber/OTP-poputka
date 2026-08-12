@@ -247,17 +247,32 @@ export const StorageService = {
 
       if (res && res.ok) {
         const json = await res.json();
-        const cloudTrips: any[] = json?.data?.trips || [];
+        const rawCloudTrips: any[] = json?.data?.trips || [];
         const cloudRequests: TripRequest[] = json?.data?.requests || [];
 
-        if (Array.isArray(cloudTrips)) {
-          const sanitizedCloudTrips = cloudTrips
+        const localTrips = this.getTrips();
+
+        if (Array.isArray(rawCloudTrips)) {
+          const sanitizedCloudTrips = rawCloudTrips
             .map(sanitizeTrip)
             .filter((t): t is Trip => t !== null && !['trip_1', 'trip_2', 'trip_3', 'trip_4_evening'].includes(t.id));
-          setItem(KEYS.TRIPS, sanitizedCloudTrips);
+
+          const mergedMap = new Map<string, Trip>();
+          // Remote trips first
+          sanitizedCloudTrips.forEach(t => mergedMap.set(t.id, t));
+          // Local trips over it so newly created local trips are NEVER lost
+          localTrips.forEach(t => mergedMap.set(t.id, t));
+
+          const finalMergedTrips = Array.from(mergedMap.values());
+          setItem(KEYS.TRIPS, finalMergedTrips);
         }
+
         if (Array.isArray(cloudRequests)) {
-          setItem(KEYS.REQUESTS, cloudRequests);
+          const localRequests = this.getRequests();
+          const mergedReqMap = new Map<string, TripRequest>();
+          cloudRequests.forEach(r => mergedReqMap.set(r.id, r));
+          localRequests.forEach(r => mergedReqMap.set(r.id, r));
+          setItem(KEYS.REQUESTS, Array.from(mergedReqMap.values()));
         }
       }
     } catch (e) {
