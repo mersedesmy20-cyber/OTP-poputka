@@ -274,9 +274,10 @@ export const App: React.FC = () => {
 
   // Filtering trips
   const filteredTrips = trips.filter(t => {
+    if (!t || !t.id) return false;
     if (selectedDistrictId && t.originDistrictId !== selectedDistrictId) return false;
     if (selectedTripType && t.tripType !== selectedTripType) return false;
-    if (selectedRecurrence && t.recurrence.type !== selectedRecurrence) return false;
+    if (selectedRecurrence && t.recurrence?.type !== selectedRecurrence) return false;
     return true;
   });
 

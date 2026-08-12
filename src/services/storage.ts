@@ -117,6 +117,57 @@ function setItem<T>(key: string, value: T): void {
   }
 }
 
+function sanitizeTrip(t: any): Trip | null {
+  if (!t || typeof t !== 'object' || !t.id) return null;
+  return {
+    id: String(t.id),
+    driverId: t.driverId || 'usr_unknown',
+    driverName: t.driverName || 'Співробітник',
+    driverAvatar: t.driverAvatar || undefined,
+    driverDepartment: t.driverDepartment || 'ОТП Банк',
+    driverTelegram: t.driverTelegram || '',
+    driverPhone: t.driverPhone || '',
+    vehicleId: t.vehicleId || 'veh_default',
+    vehicleInfo: t.vehicleInfo || 'Автомобіль',
+    vehiclePlate: t.vehiclePlate || '',
+    tripType: t.tripType || 'to_office',
+    originDistrictId: t.originDistrictId || 'dist_troieshchyna',
+    originDistrictName: t.originDistrictName || 'Київ',
+    originSpot: t.originSpot || 'Точка посадки',
+    destinationOfficeId: t.destinationOfficeId || 'off_zhylianska',
+    destinationOfficeName: t.destinationOfficeName || 'ГО ОТПБанк',
+    destinationAddress: t.destinationAddress || 'вул. Жилянська, 43',
+    departureDate: t.departureDate || new Date().toISOString().split('T')[0],
+    departureTime: t.departureTime || '08:00',
+    recurrence: (t.recurrence && typeof t.recurrence === 'object' && t.recurrence.type) ? {
+      type: t.recurrence.type,
+      label: t.recurrence.label || 'Регулярно',
+    } : { type: 'every_other_day', label: 'Через день' },
+    availableSeats: typeof t.availableSeats === 'number' ? t.availableSeats : 3,
+    initialSeats: typeof t.initialSeats === 'number' ? t.initialSeats : 4,
+    approvalMode: t.approvalMode || 'manual',
+    compensationType: t.compensationType || 'fixed_contribution',
+    compensationAmount: t.compensationAmount,
+    compensationNotes: t.compensationNotes || '',
+    maxWaitMinutes: t.maxWaitMinutes || 5,
+    luggageAllowed: !!t.luggageAllowed,
+    childSeatAvailable: !!t.childSeatAvailable,
+    petsAllowed: !!t.petsAllowed,
+    comment: t.comment || '',
+    status: t.status || 'PUBLISHED',
+    stops: Array.isArray(t.stops) && t.stops.length > 0 ? t.stops.map((s: any, idx: number) => ({
+      id: s?.id || `s_${idx}`,
+      name: s?.name || 'Зупинка',
+      estimatedTime: s?.estimatedTime || t.departureTime || '08:00',
+      order: s?.order || idx + 1,
+    })) : [
+      { id: 's1', name: t.originSpot || 'Точка відправлення', estimatedTime: t.departureTime || '08:00', order: 1 },
+      { id: 's2', name: t.destinationOfficeName || 'ГО ОТПБанк', estimatedTime: '08:35', order: 2 }
+    ],
+    createdAt: t.createdAt || new Date().toISOString(),
+  };
+}
+
 export const StorageService = {
   getUser(): UserProfile {
     const storedUser = getItem<UserProfile>(KEYS.USER, DEFAULT_FALLBACK_USER);
@@ -196,12 +247,14 @@ export const StorageService = {
 
       if (res && res.ok) {
         const json = await res.json();
-        const cloudTrips: Trip[] = json?.data?.trips || [];
+        const cloudTrips: any[] = json?.data?.trips || [];
         const cloudRequests: TripRequest[] = json?.data?.requests || [];
 
         if (Array.isArray(cloudTrips)) {
-          const filteredCloudTrips = cloudTrips.filter(t => !['trip_1', 'trip_2', 'trip_3', 'trip_4_evening'].includes(t.id));
-          setItem(KEYS.TRIPS, filteredCloudTrips);
+          const sanitizedCloudTrips = cloudTrips
+            .map(sanitizeTrip)
+            .filter((t): t is Trip => t !== null && !['trip_1', 'trip_2', 'trip_3', 'trip_4_evening'].includes(t.id));
+          setItem(KEYS.TRIPS, sanitizedCloudTrips);
         }
         if (Array.isArray(cloudRequests)) {
           setItem(KEYS.REQUESTS, cloudRequests);
@@ -237,8 +290,12 @@ export const StorageService = {
 
   // Trips
   getTrips(): Trip[] {
-    const list = getItem<Trip[]>(KEYS.TRIPS, []);
-    return list.filter(t => !['trip_1', 'trip_2', 'trip_3', 'trip_4_evening'].includes(t.id));
+    const rawList = getItem<any[]>(KEYS.TRIPS, []);
+    if (!Array.isArray(rawList)) return [];
+
+    return rawList
+      .map(sanitizeTrip)
+      .filter((t): t is Trip => t !== null && !['trip_1', 'trip_2', 'trip_3', 'trip_4_evening'].includes(t.id));
   },
   addTrip(trip: Trip): void {
     const list = this.getTrips();

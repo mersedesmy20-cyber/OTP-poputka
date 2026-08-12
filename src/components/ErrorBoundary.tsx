@@ -30,10 +30,14 @@ export class ErrorBoundary extends Component<Props, State> {
           <AlertTriangle size={52} color="#f59e0b" style={{ marginBottom: '16px' }} />
           <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '8px' }}>Корпоративний сервіс «Їдемо Разом»</h2>
           <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '24px', maxWidth: '400px', lineHeight: '1.4' }}>
-            Вся ваша поїздка збережена. Натисніть кнопку нижче, щоб оновити екран додатку.
+            Натисніть кнопку нижче для очищення кешу та завантаження стрічки.
           </p>
           <button
             onClick={() => {
+              try {
+                localStorage.removeItem('otp_carpool_trips');
+                localStorage.removeItem('otp_carpool_requests');
+              } catch (e) {}
               window.location.reload();
             }}
             style={{ padding: '12px 24px', background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
