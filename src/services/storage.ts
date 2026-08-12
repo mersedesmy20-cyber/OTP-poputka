@@ -59,7 +59,7 @@ const KEYS = {
   COMPLAINTS: 'otp_carpool_complaints',
 };
 
-const CLOUD_API_URL = 'https://api.restful-api.dev/objects/ff8081819f7e10ae019ff4f6c9972f6c';
+const CLOUD_API_BASE = 'https://crudcrud.com/api/43553f7b70924dfda4d6f42e0aac2b8f';
 
 function getTelegramUser(): Partial<UserProfile> | null {
   try {
@@ -240,16 +240,17 @@ export const StorageService = {
   async syncFromCloud(): Promise<Trip[]> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
 
-      const res = await fetch(CLOUD_API_URL, { signal: controller.signal });
+      const [tripsRes, reqsRes] = await Promise.all([
+        fetch(`${CLOUD_API_BASE}/trips`, { signal: controller.signal }).catch(() => null),
+        fetch(`${CLOUD_API_BASE}/requests`, { signal: controller.signal }).catch(() => null)
+      ]);
+
       clearTimeout(timeoutId);
 
-      if (res && res.ok) {
-        const json = await res.json();
-        const rawCloudTrips: any[] = json?.data?.trips || [];
-        const cloudRequests: TripRequest[] = json?.data?.requests || [];
-
+      if (tripsRes && tripsRes.ok) {
+        const rawCloudTrips: any[] = await tripsRes.json();
         const localTrips = this.getTrips();
 
         if (Array.isArray(rawCloudTrips)) {
@@ -258,15 +259,16 @@ export const StorageService = {
             .filter((t): t is Trip => t !== null && !['trip_1', 'trip_2', 'trip_3', 'trip_4_evening'].includes(t.id));
 
           const mergedMap = new Map<string, Trip>();
-          // Remote trips first
           sanitizedCloudTrips.forEach(t => mergedMap.set(t.id, t));
-          // Local trips over it so newly created local trips are NEVER lost
           localTrips.forEach(t => mergedMap.set(t.id, t));
 
           const finalMergedTrips = Array.from(mergedMap.values());
           setItem(KEYS.TRIPS, finalMergedTrips);
         }
+      }
 
+      if (reqsRes && reqsRes.ok) {
+        const cloudRequests: TripRequest[] = await reqsRes.json();
         if (Array.isArray(cloudRequests)) {
           const localRequests = this.getRequests();
           const mergedReqMap = new Map<string, TripRequest>();
@@ -281,25 +283,42 @@ export const StorageService = {
     return this.getTrips();
   },
 
-  async syncToCloud(): Promise<void> {
+  async syncTripToCloud(trip: Trip): Promise<void> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
 
-      const trips = this.getTrips();
-      const requests = this.getRequests();
-      await fetch(CLOUD_API_URL, {
-        method: 'PUT',
+      const cleanTrip = sanitizeTrip(trip);
+      if (!cleanTrip) return;
+
+      await fetch(`${CLOUD_API_BASE}/trips`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'otp_trips',
-          data: { trips, requests }
-        }),
+        body: JSON.stringify(cleanTrip),
         signal: controller.signal
       });
+
       clearTimeout(timeoutId);
     } catch (e) {
-      console.warn('Error pushing trips to cloud database', e);
+      console.warn('Error pushing trip to cloud', e);
+    }
+  },
+
+  async syncRequestToCloud(req: TripRequest): Promise<void> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+      await fetch(`${CLOUD_API_BASE}/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+    } catch (e) {
+      console.warn('Error pushing request to cloud', e);
     }
   },
 
@@ -313,12 +332,15 @@ export const StorageService = {
       .filter((t): t is Trip => t !== null && !['trip_1', 'trip_2', 'trip_3', 'trip_4_evening'].includes(t.id));
   },
   addTrip(trip: Trip): void {
+    const cleanTrip = sanitizeTrip(trip);
+    if (!cleanTrip) return;
+
     const list = this.getTrips();
-    list.unshift(trip);
+    list.unshift(cleanTrip);
     setItem(KEYS.TRIPS, list);
 
-    this.notifySubscribers(trip);
-    this.syncToCloud();
+    this.notifySubscribers(cleanTrip);
+    this.syncTripToCloud(cleanTrip);
   },
   updateTrip(trip: Trip): void {
     const list = this.getTrips();
@@ -326,7 +348,7 @@ export const StorageService = {
     if (idx !== -1) {
       list[idx] = trip;
       setItem(KEYS.TRIPS, list);
-      this.syncToCloud();
+      this.syncTripToCloud(trip);
     }
   },
   deleteTrip(tripId: string): void {
@@ -336,12 +358,10 @@ export const StorageService = {
     // Also delete associated requests
     const reqs = this.getRequests().filter(r => r.tripId !== tripId);
     setItem(KEYS.REQUESTS, reqs);
-    this.syncToCloud();
   },
   clearAllTrips(): void {
     setItem(KEYS.TRIPS, []);
     setItem(KEYS.REQUESTS, []);
-    this.syncToCloud();
   },
 
   // Requests
@@ -368,7 +388,7 @@ export const StorageService = {
       });
     }
 
-    this.syncToCloud();
+    this.syncRequestToCloud(req);
   },
   updateRequestStatus(requestId: string, status: TripRequest['status']): void {
     const requests = this.getRequests();
@@ -396,7 +416,6 @@ export const StorageService = {
           createdAt: new Date().toISOString(),
         });
       }
-      this.syncToCloud();
     }
   },
 
@@ -480,7 +499,6 @@ export const StorageService = {
     localStorage.removeItem(KEYS.OFFICES);
     localStorage.removeItem(KEYS.SETTINGS);
     localStorage.removeItem(KEYS.COMPLAINTS);
-    this.syncToCloud();
     window.dispatchEvent(new Event('otp_storage_updated'));
   }
 };
