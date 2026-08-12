@@ -112,6 +112,18 @@ export const App: React.FC = () => {
     showToast('🔄 Стрічку поїздок оновлено з хмари!');
   };
 
+  // Telegram WebApp Ready & Expand initialization
+  useEffect(() => {
+    try {
+      if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+      }
+    } catch (e) {
+      console.error('Error initializing Telegram WebApp SDK', e);
+    }
+  }, []);
+
   useEffect(() => {
     // Initial fetch from global cloud store
     StorageService.syncFromCloud().then(cloudTrips => {
