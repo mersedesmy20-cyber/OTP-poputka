@@ -186,8 +186,13 @@ export const StorageService = {
   // Global Cloud Sync Methods
   async syncFromCloud(): Promise<Trip[]> {
     try {
-      const res = await fetch(CLOUD_API_URL);
-      if (res.ok) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+      const res = await fetch(CLOUD_API_URL, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (res && res.ok) {
         const json = await res.json();
         const cloudTrips: Trip[] = json?.data?.trips || [];
         const cloudRequests: TripRequest[] = json?.data?.requests || [];
@@ -201,13 +206,16 @@ export const StorageService = {
         }
       }
     } catch (e) {
-      console.warn('Cloud sync offline fallback to local storage', e);
+      console.warn('Cloud sync timeout/offline, fallback to local storage', e);
     }
     return this.getTrips();
   },
 
   async syncToCloud(): Promise<void> {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+
       const trips = this.getTrips();
       const requests = this.getRequests();
       await fetch(CLOUD_API_URL, {
@@ -216,8 +224,10 @@ export const StorageService = {
         body: JSON.stringify({
           name: 'otp_trips',
           data: { trips, requests }
-        })
+        }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
     } catch (e) {
       console.warn('Error pushing trips to cloud database', e);
     }
