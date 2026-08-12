@@ -178,7 +178,8 @@ export const StorageService = {
 
   // Trips
   getTrips(): Trip[] {
-    return getItem<Trip[]>(KEYS.TRIPS, []);
+    const list = getItem<Trip[]>(KEYS.TRIPS, []);
+    return list.filter(t => !['trip_1', 'trip_2', 'trip_3', 'trip_4_evening'].includes(t.id));
   },
   addTrip(trip: Trip): void {
     const list = this.getTrips();
