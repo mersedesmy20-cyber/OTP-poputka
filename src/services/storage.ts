@@ -57,6 +57,8 @@ const KEYS = {
   COMPLAINTS: 'otp_carpool_complaints',
 };
 
+const CLOUD_API_URL = 'https://api.restful-api.dev/objects/ff8081819f7e10ae019ff4f6c9972f6c';
+
 function getTelegramUser(): Partial<UserProfile> | null {
   try {
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
@@ -181,6 +183,46 @@ export const StorageService = {
     setItem(KEYS.OFFICES, list);
   },
 
+  // Global Cloud Sync Methods
+  async syncFromCloud(): Promise<Trip[]> {
+    try {
+      const res = await fetch(CLOUD_API_URL);
+      if (res.ok) {
+        const json = await res.json();
+        const cloudTrips: Trip[] = json?.data?.trips || [];
+        const cloudRequests: TripRequest[] = json?.data?.requests || [];
+
+        if (Array.isArray(cloudTrips)) {
+          const filteredCloudTrips = cloudTrips.filter(t => !['trip_1', 'trip_2', 'trip_3', 'trip_4_evening'].includes(t.id));
+          setItem(KEYS.TRIPS, filteredCloudTrips);
+        }
+        if (Array.isArray(cloudRequests)) {
+          setItem(KEYS.REQUESTS, cloudRequests);
+        }
+      }
+    } catch (e) {
+      console.warn('Cloud sync offline fallback to local storage', e);
+    }
+    return this.getTrips();
+  },
+
+  async syncToCloud(): Promise<void> {
+    try {
+      const trips = this.getTrips();
+      const requests = this.getRequests();
+      await fetch(CLOUD_API_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'otp_trips',
+          data: { trips, requests }
+        })
+      });
+    } catch (e) {
+      console.warn('Error pushing trips to cloud database', e);
+    }
+  },
+
   // Trips
   getTrips(): Trip[] {
     const list = getItem<Trip[]>(KEYS.TRIPS, []);
@@ -192,6 +234,7 @@ export const StorageService = {
     setItem(KEYS.TRIPS, list);
 
     this.notifySubscribers(trip);
+    this.syncToCloud();
   },
   updateTrip(trip: Trip): void {
     const list = this.getTrips();
@@ -199,6 +242,7 @@ export const StorageService = {
     if (idx !== -1) {
       list[idx] = trip;
       setItem(KEYS.TRIPS, list);
+      this.syncToCloud();
     }
   },
   deleteTrip(tripId: string): void {
@@ -208,10 +252,12 @@ export const StorageService = {
     // Also delete associated requests
     const reqs = this.getRequests().filter(r => r.tripId !== tripId);
     setItem(KEYS.REQUESTS, reqs);
+    this.syncToCloud();
   },
   clearAllTrips(): void {
     setItem(KEYS.TRIPS, []);
     setItem(KEYS.REQUESTS, []);
+    this.syncToCloud();
   },
 
   // Requests
@@ -237,6 +283,8 @@ export const StorageService = {
         createdAt: new Date().toISOString(),
       });
     }
+
+    this.syncToCloud();
   },
   updateRequestStatus(requestId: string, status: TripRequest['status']): void {
     const requests = this.getRequests();
@@ -264,6 +312,7 @@ export const StorageService = {
           createdAt: new Date().toISOString(),
         });
       }
+      this.syncToCloud();
     }
   },
 
@@ -347,6 +396,7 @@ export const StorageService = {
     localStorage.removeItem(KEYS.OFFICES);
     localStorage.removeItem(KEYS.SETTINGS);
     localStorage.removeItem(KEYS.COMPLAINTS);
+    this.syncToCloud();
     window.dispatchEvent(new Event('otp_storage_updated'));
   }
 };

@@ -25,7 +25,8 @@ import {
   X,
   Info,
   Sun,
-  Moon
+  Moon,
+  RefreshCw
 } from 'lucide-react';
 import './styles/theme.css';
 
@@ -97,6 +98,37 @@ export const App: React.FC = () => {
   const [selectedDistrictId, setSelectedDistrictId] = useState<string>('');
   const [selectedTripType, setSelectedTripType] = useState<string>('');
   const [selectedRecurrence, setSelectedRecurrence] = useState<string>('');
+
+  // Cloud Storage Sync State
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    triggerHaptic('light');
+    const cloudTrips = await StorageService.syncFromCloud();
+    setTrips(cloudTrips);
+    setRequests(StorageService.getRequests());
+    setIsSyncing(false);
+    showToast('🔄 Стрічку поїздок оновлено з хмари!');
+  };
+
+  useEffect(() => {
+    // Initial fetch from global cloud store
+    StorageService.syncFromCloud().then(cloudTrips => {
+      setTrips(cloudTrips);
+      setRequests(StorageService.getRequests());
+    });
+
+    // Auto sync every 8 seconds across all devices
+    const interval = setInterval(() => {
+      StorageService.syncFromCloud().then(cloudTrips => {
+        setTrips(cloudTrips);
+        setRequests(StorageService.getRequests());
+      });
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Storage listener for live state updates
   useEffect(() => {
@@ -386,6 +418,15 @@ export const App: React.FC = () => {
                 {roleMode === 'driver' ? 'Створені поїздки колег' : 'Доступні авто з районів'}
                 <span className="badge badge-green" style={{ fontSize: '11px' }}>{filteredTrips.length}</span>
               </h3>
+
+              <button
+                onClick={handleManualSync}
+                style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                title="Оновити поїздки з хмари"
+              >
+                <RefreshCw size={13} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
+                {isSyncing ? 'Оновлення...' : 'Оновити'}
+              </button>
             </div>
 
             {/* Trip Cards Feed or Onboarding empty state */}
