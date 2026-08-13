@@ -19,7 +19,6 @@ import {
   User,
   Bot,
   Shield,
-  Sparkles,
   Bell,
   CheckCircle2,
   X,
@@ -232,7 +231,7 @@ export const App: React.FC = () => {
     showToast('🎉 Поїздку успішно опубліковано для колег!');
   };
 
-  const handleOpenBookingModal = (trip: Trip) => {
+  const handleOpenBookingModal = (trip: Trip, isQuickBooking: boolean = false) => {
     triggerHaptic('light');
     const existingReq = requests.find(r => r.tripId === trip.id && r.passengerId === user.id);
     if (existingReq) {
@@ -240,6 +239,14 @@ export const App: React.FC = () => {
       setSelectedTripDetails(trip);
       return;
     }
+
+    if (isQuickBooking) {
+      // 1-Click Fast Booking
+      const defaultSpot = trip.stops[0]?.name || trip.originSpot;
+      handleConfirmBooking(trip, 1, defaultSpot);
+      return;
+    }
+
     setBookingTripTarget(trip);
   };
 
@@ -426,19 +433,6 @@ export const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Telegram Mini App Banner */}
-      <div className="tg-banner">
-        <div className="tg-badge">
-          <Bot size={16} /> Telegram Mini App підключено
-        </div>
-        <button
-          onClick={() => setIsTelegramModalOpen(true)}
-          style={{ background: 'none', border: 'none', color: 'var(--text-main)', fontSize: '12px', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}
-        >
-          @OTPTravelHubbot
-        </button>
-      </div>
-
       {/* Role Switcher Bar ( Driver vs Passenger Toggle ) */}
       <div className="role-switch-container">
         <button
@@ -490,21 +484,20 @@ export const App: React.FC = () => {
               }}
             />
 
-            {/* Feed Section Title */}
-            <div style={{ padding: '0 16px', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Sparkles size={16} color="var(--accent-green)" />
-                {roleMode === 'driver' ? 'Створені поїздки колег' : 'Доступні авто з районів'}
-                <span className="badge badge-green" style={{ fontSize: '11px' }}>{filteredTrips.length}</span>
-              </h3>
+            {/* Feed Header */}
+            <div style={{ padding: '0 4px', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '13px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-main)' }}>
+                <span>{roleMode === 'driver' ? 'Створені поїздки' : 'Доступні авто'}</span>
+                <span className="badge badge-green" style={{ fontSize: '11px', padding: '1px 6px' }}>{filteredTrips.length}</span>
+              </div>
 
               <button
                 onClick={handleManualSync}
-                style={{ background: 'none', border: 'none', color: cloudStatus === 'offline' ? 'var(--accent-danger)' : 'var(--accent-cyan)', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                style={{ background: 'none', border: 'none', color: cloudStatus === 'offline' ? 'var(--accent-danger)' : 'var(--accent-cyan)', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                 title="Оновити поїздки з хмари"
               >
-                <RefreshCw size={13} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
-                {isSyncing ? 'Оновлення...' : cloudStatus === 'offline' ? '🔴 Офлайн' : 'Оновити'}
+                <RefreshCw size={12} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
+                {isSyncing ? '...' : cloudStatus === 'offline' ? '🔴 Офлайн' : 'Оновити'}
               </button>
             </div>
 

@@ -186,10 +186,15 @@ body {
   background: var(--bg-glass);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border-color);
-  padding: 14px 16px;
+  padding: 10px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.compact-trip-card:hover {
+  border-color: var(--accent-green) !important;
+  background: var(--bg-card-hover) !important;
 }
 
 .logo-group {
