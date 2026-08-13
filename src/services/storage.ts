@@ -45,6 +45,7 @@ declare global {
   }
 }
 
+// ─── Local Storage Keys ───
 const KEYS = {
   USER: 'otp_carpool_user',
   ROLE_MODE: 'otp_carpool_role_mode',
@@ -59,8 +60,22 @@ const KEYS = {
   COMPLAINTS: 'otp_carpool_complaints',
 };
 
-const CLOUD_API_BASE = 'https://crudcrud.com/api/43553f7b70924dfda4d6f42e0aac2b8f';
+// ─── Cloud: npoint.io — stable, permanent JSON bin ───
+// Single atomic document: { trips: [], requests: [], notifications: [] }
+const CLOUD_API_URL = 'https://api.npoint.io/38b2fa7106af5af737bc';
 
+// ─── Circuit breaker state ───
+let _cloudFailCount = 0;
+let _cloudStatus: 'online' | 'syncing' | 'offline' = 'online';
+const MAX_FAIL_BEFORE_BACKOFF = 3;
+
+function getCloudPollInterval(): number {
+  if (_cloudFailCount >= MAX_FAIL_BEFORE_BACKOFF) return 30000; // 30s when cloud is down
+  if (_cloudFailCount >= 1) return 15000; // 15s after first fail
+  return 6000; // 6s normal
+}
+
+// ─── Telegram User Detection ───
 function getTelegramUser(): Partial<UserProfile> | null {
   try {
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
@@ -98,6 +113,7 @@ const DEFAULT_FALLBACK_USER: UserProfile = {
   isAdmin: true,
 };
 
+// ─── Local Storage Helpers ───
 function getItem<T>(key: string, defaultValue: T): T {
   try {
     const item = localStorage.getItem(key);
@@ -117,6 +133,7 @@ function setItem<T>(key: string, value: T): void {
   }
 }
 
+// ─── Data Sanitization ───
 function sanitizeTrip(t: any): Trip | null {
   if (!t || typeof t !== 'object' || !t.id) return null;
   return {
@@ -165,10 +182,78 @@ function sanitizeTrip(t: any): Trip | null {
       { id: 's2', name: t.destinationOfficeName || 'ГО ОТПБанк', estimatedTime: '08:35', order: 2 }
     ],
     createdAt: t.createdAt || new Date().toISOString(),
+    updatedAt: t.updatedAt || t.createdAt || new Date().toISOString(),
   };
 }
 
+// ─── Smart Merge Helpers ───
+// For trips: newer updatedAt wins
+function mergeTrips(local: Trip[], cloud: Trip[]): Trip[] {
+  const map = new Map<string, Trip>();
+
+  // Cloud first
+  cloud.forEach(t => map.set(t.id, t));
+
+  // Local overrides ONLY if local is newer
+  local.forEach(localTrip => {
+    const existing = map.get(localTrip.id);
+    if (!existing) {
+      // Local-only trip (not yet in cloud) — keep it
+      map.set(localTrip.id, localTrip);
+    } else {
+      // Both exist — keep the one with newer updatedAt
+      const localTime = new Date(localTrip.updatedAt || localTrip.createdAt || 0).getTime();
+      const cloudTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+      if (localTime > cloudTime) {
+        map.set(localTrip.id, localTrip);
+      }
+      // else: cloud version stays (it's newer — e.g. another device updated seats)
+    }
+  });
+
+  return Array.from(map.values());
+}
+
+// For requests: cloud always wins for status changes (driver approved on their device)
+function mergeRequests(local: TripRequest[], cloud: TripRequest[]): TripRequest[] {
+  const map = new Map<string, TripRequest>();
+
+  // Local first
+  local.forEach(r => map.set(r.id, r));
+
+  // Cloud OVERRIDES local — this is critical for approval status propagation
+  cloud.forEach(r => map.set(r.id, r));
+
+  return Array.from(map.values());
+}
+
+// For notifications: merge both, deduplicate by id
+function mergeNotifications(local: AppNotification[], cloud: AppNotification[], userId: string): AppNotification[] {
+  const map = new Map<string, AppNotification>();
+
+  local.forEach(n => map.set(n.id, n));
+
+  // Only merge cloud notifications that belong to this user
+  cloud.filter(n => n.userId === userId).forEach(n => map.set(n.id, n));
+
+  return Array.from(map.values());
+}
+
+// Filter out old test trip IDs
+const TEST_TRIP_IDS = ['trip_1', 'trip_2', 'trip_3', 'trip_4_evening'];
+
+// ─── Main Storage Service ───
 export const StorageService = {
+  // ── Cloud Status ──
+  getCloudStatus(): 'online' | 'syncing' | 'offline' {
+    return _cloudStatus;
+  },
+
+  getCloudPollInterval(): number {
+    return getCloudPollInterval();
+  },
+
+  // ── User ──
   getUser(): UserProfile {
     const storedUser = getItem<UserProfile>(KEYS.USER, DEFAULT_FALLBACK_USER);
     const tgData = getTelegramUser();
@@ -184,13 +269,13 @@ export const StorageService = {
       };
       return mergedUser;
     }
-
     return storedUser;
   },
   saveUser(user: UserProfile): void {
     setItem(KEYS.USER, user);
   },
 
+  // ── Role ──
   getRoleMode(): UserRoleMode {
     return getItem<UserRoleMode>(KEYS.ROLE_MODE, 'passenger');
   },
@@ -201,7 +286,7 @@ export const StorageService = {
     this.saveUser(user);
   },
 
-  // Vehicles
+  // ── Vehicles ──
   getVehicles(): Vehicle[] {
     return getItem<Vehicle[]>(KEYS.VEHICLES, INITIAL_VEHICLES);
   },
@@ -218,7 +303,7 @@ export const StorageService = {
     setItem(KEYS.VEHICLES, list);
   },
 
-  // Districts & Offices
+  // ── Districts & Offices ──
   getDistricts(): District[] {
     return getItem<District[]>(KEYS.DISTRICTS, INITIAL_DISTRICTS);
   },
@@ -236,140 +321,119 @@ export const StorageService = {
     setItem(KEYS.OFFICES, list);
   },
 
-  // Global Cloud Sync Methods
+  // ════════════════════════════════════════════
+  //  CLOUD SYNC — Atomic Single-Document Model
+  // ════════════════════════════════════════════
+
+  /**
+   * Download the full cloud document and smart-merge with local data.
+   * Cloud wins for request statuses (approvals), local wins for brand-new trips.
+   */
   async syncFromCloud(): Promise<Trip[]> {
+    _cloudStatus = 'syncing';
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-      const [tripsRes, reqsRes, notifsRes] = await Promise.all([
-        fetch(`${CLOUD_API_BASE}/trips`, { signal: controller.signal }).catch(() => null),
-        fetch(`${CLOUD_API_BASE}/requests`, { signal: controller.signal }).catch(() => null),
-        fetch(`${CLOUD_API_BASE}/notifications`, { signal: controller.signal }).catch(() => null)
-      ]);
-
+      const res = await fetch(CLOUD_API_URL, { signal: controller.signal });
       clearTimeout(timeoutId);
 
-      if (tripsRes && tripsRes.ok) {
-        const rawCloudTrips: any[] = await tripsRes.json();
-        const localTrips = this.getTrips();
-
-        if (Array.isArray(rawCloudTrips)) {
-          const sanitizedCloudTrips = rawCloudTrips
-            .map(sanitizeTrip)
-            .filter((t): t is Trip => t !== null && !['trip_1', 'trip_2', 'trip_3', 'trip_4_evening'].includes(t.id));
-
-          const mergedMap = new Map<string, Trip>();
-          sanitizedCloudTrips.forEach(t => mergedMap.set(t.id, t));
-          localTrips.forEach(t => mergedMap.set(t.id, t));
-
-          const finalMergedTrips = Array.from(mergedMap.values());
-          setItem(KEYS.TRIPS, finalMergedTrips);
-        }
+      if (!res.ok) {
+        throw new Error(`Cloud returned ${res.status}`);
       }
 
-      if (reqsRes && reqsRes.ok) {
-        const cloudRequests: TripRequest[] = await reqsRes.json();
-        if (Array.isArray(cloudRequests)) {
-          const localRequests = this.getRequests();
-          const mergedReqMap = new Map<string, TripRequest>();
+      const cloudDoc = await res.json();
 
-          // Merge: remote cloud requests take precedence for status updates
-          localRequests.forEach(r => mergedReqMap.set(r.id, r));
-          cloudRequests.forEach(r => mergedReqMap.set(r.id, r));
+      // ── Merge Trips ──
+      const rawCloudTrips: any[] = cloudDoc?.trips || [];
+      const cloudTrips = rawCloudTrips
+        .map(sanitizeTrip)
+        .filter((t): t is Trip => t !== null && !TEST_TRIP_IDS.includes(t.id));
 
-          setItem(KEYS.REQUESTS, Array.from(mergedReqMap.values()));
-        }
+      const localTrips = this.getTrips();
+      const mergedTrips = mergeTrips(localTrips, cloudTrips);
+      setItem(KEYS.TRIPS, mergedTrips);
+
+      // ── Merge Requests (cloud wins for status!) ──
+      const cloudRequests: TripRequest[] = cloudDoc?.requests || [];
+      if (Array.isArray(cloudRequests)) {
+        const localRequests = this.getRequests();
+        const mergedRequests = mergeRequests(localRequests, cloudRequests);
+        setItem(KEYS.REQUESTS, mergedRequests);
       }
 
-      if (notifsRes && notifsRes.ok) {
-        const cloudNotifs: AppNotification[] = await notifsRes.json();
-        if (Array.isArray(cloudNotifs)) {
-          const currentUser = this.getUser();
-          const myCloudNotifs = cloudNotifs.filter(n => n.userId === currentUser.id);
-
-          const localNotifs = this.getNotifications();
-          const mergedNotifMap = new Map<string, AppNotification>();
-          localNotifs.forEach(n => mergedNotifMap.set(n.id, n));
-          myCloudNotifs.forEach(n => mergedNotifMap.set(n.id, n));
-
-          setItem(KEYS.NOTIFICATIONS, Array.from(mergedNotifMap.values()));
-        }
+      // ── Merge Notifications ──
+      const cloudNotifs: AppNotification[] = cloudDoc?.notifications || [];
+      if (Array.isArray(cloudNotifs)) {
+        const currentUser = this.getUser();
+        const localNotifs = this.getNotifications();
+        const mergedNotifs = mergeNotifications(localNotifs, cloudNotifs, currentUser.id);
+        setItem(KEYS.NOTIFICATIONS, mergedNotifs);
       }
+
+      // ── Circuit breaker: reset on success ──
+      _cloudFailCount = 0;
+      _cloudStatus = 'online';
+
     } catch (e) {
-      console.warn('Cloud sync timeout/offline, fallback to local storage', e);
+      _cloudFailCount++;
+      _cloudStatus = 'offline';
+      console.warn(`Cloud sync failed (attempt ${_cloudFailCount}, next poll in ${getCloudPollInterval() / 1000}s)`, e);
     }
+
     return this.getTrips();
   },
 
-  async syncTripToCloud(trip: Trip): Promise<void> {
+  /**
+   * Upload the full local state as a single atomic JSON document.
+   * This replaces the entire cloud document — no duplicates possible.
+   */
+  async syncToCloud(): Promise<void> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-      const cleanTrip = sanitizeTrip(trip);
-      if (!cleanTrip) return;
+      const trips = this.getTrips();
+      const requests = this.getRequests();
+      const notifications = this.getNotifications();
 
-      await fetch(`${CLOUD_API_BASE}/trips`, {
+      const res = await fetch(CLOUD_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cleanTrip),
-        signal: controller.signal
+        body: JSON.stringify({ trips, requests, notifications }),
+        signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
+
+      if (res.ok) {
+        _cloudFailCount = 0;
+        _cloudStatus = 'online';
+      } else {
+        throw new Error(`Cloud POST returned ${res.status}`);
+      }
     } catch (e) {
-      console.warn('Error pushing trip to cloud', e);
+      _cloudFailCount++;
+      _cloudStatus = 'offline';
+      console.warn('Error pushing data to cloud', e);
     }
   },
 
-  async syncRequestToCloud(req: TripRequest): Promise<void> {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
-
-      await fetch(`${CLOUD_API_BASE}/requests`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(req),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-    } catch (e) {
-      console.warn('Error pushing request to cloud', e);
-    }
-  },
-
-  async syncNotificationToCloud(notif: AppNotification): Promise<void> {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
-
-      await fetch(`${CLOUD_API_BASE}/notifications`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(notif),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-    } catch (e) {
-      console.warn('Error pushing notification to cloud', e);
-    }
-  },
-
-  // Trips
+  // ════════════════════════
+  //  TRIPS
+  // ════════════════════════
   getTrips(): Trip[] {
     const rawList = getItem<any[]>(KEYS.TRIPS, []);
     if (!Array.isArray(rawList)) return [];
 
     return rawList
       .map(sanitizeTrip)
-      .filter((t): t is Trip => t !== null && !['trip_1', 'trip_2', 'trip_3', 'trip_4_evening'].includes(t.id));
+      .filter((t): t is Trip => t !== null && !TEST_TRIP_IDS.includes(t.id));
   },
+
   addTrip(trip: Trip): void {
-    const cleanTrip = sanitizeTrip(trip);
+    const now = new Date().toISOString();
+    const cleanTrip = sanitizeTrip({ ...trip, updatedAt: now });
     if (!cleanTrip) return;
 
     const list = this.getTrips();
@@ -377,39 +441,49 @@ export const StorageService = {
     setItem(KEYS.TRIPS, list);
 
     this.notifySubscribers(cleanTrip);
-    this.syncTripToCloud(cleanTrip);
+    this.syncToCloud();
   },
+
   updateTrip(trip: Trip): void {
+    const now = new Date().toISOString();
     const list = this.getTrips();
     const idx = list.findIndex(t => t.id === trip.id);
     if (idx !== -1) {
-      list[idx] = trip;
+      list[idx] = { ...trip, updatedAt: now };
       setItem(KEYS.TRIPS, list);
-      this.syncTripToCloud(trip);
+      this.syncToCloud();
     }
   },
+
   deleteTrip(tripId: string): void {
     const list = this.getTrips().filter(t => t.id !== tripId);
     setItem(KEYS.TRIPS, list);
 
-    // Also delete associated requests
     const reqs = this.getRequests().filter(r => r.tripId !== tripId);
     setItem(KEYS.REQUESTS, reqs);
+
+    this.syncToCloud();
   },
+
   clearAllTrips(): void {
     setItem(KEYS.TRIPS, []);
     setItem(KEYS.REQUESTS, []);
+    this.syncToCloud();
   },
 
-  // Requests
+  // ════════════════════════
+  //  REQUESTS
+  // ════════════════════════
   getRequests(): TripRequest[] {
     return getItem<TripRequest[]>(KEYS.REQUESTS, []);
   },
+
   addRequest(req: TripRequest): void {
     const list = this.getRequests();
     list.unshift(req);
     setItem(KEYS.REQUESTS, list);
 
+    // Notify the driver
     const trip = this.getTrips().find(t => t.id === req.tripId);
     if (trip) {
       const tgNotice = req.passengerTelegram ? ` (@${req.passengerTelegram})` : '';
@@ -425,15 +499,15 @@ export const StorageService = {
       });
     }
 
-    this.syncRequestToCloud(req);
+    this.syncToCloud();
   },
+
   updateRequestStatus(requestId: string, status: TripRequest['status']): void {
     const requests = this.getRequests();
     const req = requests.find(r => r.id === requestId);
     if (req) {
       req.status = status;
       setItem(KEYS.REQUESTS, requests);
-      this.syncRequestToCloud(req);
 
       const trip = this.getTrips().find(t => t.id === req.tripId);
       if (trip && status === 'approved') {
@@ -443,6 +517,7 @@ export const StorageService = {
         }
         this.updateTrip(trip);
 
+        // This notification will be synced to cloud and delivered to passenger's device
         this.addNotification({
           id: 'notif_' + Date.now(),
           userId: req.passengerId,
@@ -454,10 +529,15 @@ export const StorageService = {
           createdAt: new Date().toISOString(),
         });
       }
+
+      // Push updated status to cloud immediately so other device sees it
+      this.syncToCloud();
     }
   },
 
-  // Subscriptions
+  // ════════════════════════
+  //  SUBSCRIPTIONS
+  // ════════════════════════
   getSubscriptions(): RouteSubscription[] {
     return getItem<RouteSubscription[]>(KEYS.SUBSCRIPTIONS, INITIAL_SUBSCRIPTIONS);
   },
@@ -471,7 +551,9 @@ export const StorageService = {
     setItem(KEYS.SUBSCRIPTIONS, list);
   },
 
-  // Notifications
+  // ════════════════════════
+  //  NOTIFICATIONS
+  // ════════════════════════
   getNotifications(): AppNotification[] {
     return getItem<AppNotification[]>(KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
   },
@@ -479,7 +561,7 @@ export const StorageService = {
     const list = this.getNotifications();
     list.unshift(notif);
     setItem(KEYS.NOTIFICATIONS, list);
-    this.syncNotificationToCloud(notif);
+    // Note: syncToCloud() is called by the parent operation (addRequest/updateRequestStatus)
   },
   markNotificationRead(id: string): void {
     const list = this.getNotifications();
@@ -490,7 +572,9 @@ export const StorageService = {
     }
   },
 
-  // Complaints
+  // ════════════════════════
+  //  COMPLAINTS
+  // ════════════════════════
   getComplaints(): Complaint[] {
     return getItem<Complaint[]>(KEYS.COMPLAINTS, []);
   },
@@ -500,7 +584,9 @@ export const StorageService = {
     setItem(KEYS.COMPLAINTS, list);
   },
 
-  // Settings
+  // ════════════════════════
+  //  SETTINGS
+  // ════════════════════════
   getSettings(): AppSettings {
     return getItem<AppSettings>(KEYS.SETTINGS, INITIAL_SETTINGS);
   },
@@ -508,6 +594,9 @@ export const StorageService = {
     setItem(KEYS.SETTINGS, settings);
   },
 
+  // ════════════════════════
+  //  SUBSCRIBER NOTIFICATIONS
+  // ════════════════════════
   notifySubscribers(trip: Trip): void {
     const subs = this.getSubscriptions();
     subs.forEach(sub => {
@@ -526,6 +615,9 @@ export const StorageService = {
     });
   },
 
+  // ════════════════════════
+  //  RESET
+  // ════════════════════════
   resetAll(): void {
     localStorage.removeItem(KEYS.USER);
     localStorage.removeItem(KEYS.ROLE_MODE);

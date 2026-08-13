@@ -26,7 +26,10 @@ import {
   Info,
   Sun,
   Moon,
-  RefreshCw
+  RefreshCw,
+  Wifi,
+  WifiOff,
+  Cloud
 } from 'lucide-react';
 import './styles/theme.css';
 
@@ -101,6 +104,7 @@ export const App: React.FC = () => {
 
   // Cloud Storage Sync State
   const [isSyncing, setIsSyncing] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<'online' | 'syncing' | 'offline'>('online');
 
   const handleManualSync = async () => {
     setIsSyncing(true);
@@ -108,8 +112,15 @@ export const App: React.FC = () => {
     const cloudTrips = await StorageService.syncFromCloud();
     setTrips(cloudTrips);
     setRequests(StorageService.getRequests());
+    setNotifications(StorageService.getNotifications());
+    setCloudStatus(StorageService.getCloudStatus());
     setIsSyncing(false);
-    showToast('🔄 Стрічку поїздок оновлено з хмари!');
+    const status = StorageService.getCloudStatus();
+    if (status === 'online') {
+      showToast('🔄 Стрічку поїздок оновлено з хмари!');
+    } else {
+      showToast('⚠️ Хмара недоступна, показуємо локальні дані');
+    }
   };
 
   // Telegram WebApp Ready & Expand initialization
@@ -126,6 +137,8 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     const lastApprovedReqIds = new Set<string>();
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let previousCloudStatus: 'online' | 'syncing' | 'offline' = 'online';
 
     const checkApprovalEvents = (reqList: TripRequest[]) => {
       const myApproved = reqList.filter(r => r.passengerId === user.id && r.status === 'approved');
@@ -140,25 +153,47 @@ export const App: React.FC = () => {
       });
     };
 
+    const doSync = async () => {
+      const cloudTrips = await StorageService.syncFromCloud();
+      setTrips(cloudTrips);
+      const reqs = StorageService.getRequests();
+      setRequests(reqs);
+      setNotifications(StorageService.getNotifications());
+      const newStatus = StorageService.getCloudStatus();
+      setCloudStatus(newStatus);
+      checkApprovalEvents(reqs);
+
+      // If status changed from offline to online — notify and resync interval
+      if (previousCloudStatus === 'offline' && newStatus === 'online') {
+        showToast('🟢 Хмара знову підключена! Дані синхронізовано.');
+      }
+      previousCloudStatus = newStatus;
+
+      // Adaptive polling: restart interval with new timing based on circuit breaker
+      const newInterval = StorageService.getCloudPollInterval();
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+      }
+      intervalId = setInterval(doSync, newInterval);
+    };
+
     // Initial fetch from global cloud store
     StorageService.syncFromCloud().then(cloudTrips => {
       setTrips(cloudTrips);
       const reqs = StorageService.getRequests();
       setRequests(reqs);
+      setNotifications(StorageService.getNotifications());
+      setCloudStatus(StorageService.getCloudStatus());
       reqs.filter(r => r.passengerId === user.id && r.status === 'approved').forEach(r => lastApprovedReqIds.add(r.id));
+
+      // Start adaptive polling
+      const pollMs = StorageService.getCloudPollInterval();
+      intervalId = setInterval(doSync, pollMs);
     });
 
-    // Auto sync every 5 seconds across all devices
-    const interval = setInterval(() => {
-      StorageService.syncFromCloud().then(cloudTrips => {
-        setTrips(cloudTrips);
-        const reqs = StorageService.getRequests();
-        setRequests(reqs);
-        checkApprovalEvents(reqs);
-      });
-    }, 5000);
-
-    return () => clearInterval(interval);
+    return () => {
+      if (intervalId !== null) clearInterval(intervalId);
+    };
   }, [user.id]);
 
   // Storage listener for live state updates
@@ -327,6 +362,14 @@ export const App: React.FC = () => {
             <h1>{settings.appName}</h1>
             <p>ГО Жилянська, 43</p>
           </div>
+          {/* Cloud Status Indicator */}
+          <div
+            title={cloudStatus === 'online' ? 'Хмара підключена' : cloudStatus === 'syncing' ? 'Синхронізація...' : 'Хмара недоступна'}
+            style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', fontWeight: '700', color: cloudStatus === 'online' ? 'var(--accent-green)' : cloudStatus === 'syncing' ? 'var(--accent-warning)' : 'var(--accent-danger)', marginLeft: '6px' }}
+          >
+            {cloudStatus === 'online' ? <Wifi size={12} /> : cloudStatus === 'syncing' ? <Cloud size={12} /> : <WifiOff size={12} />}
+            {cloudStatus === 'offline' ? 'офлайн' : ''}
+          </div>
         </div>
 
         <div className="header-actions">
@@ -457,11 +500,11 @@ export const App: React.FC = () => {
 
               <button
                 onClick={handleManualSync}
-                style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                style={{ background: 'none', border: 'none', color: cloudStatus === 'offline' ? 'var(--accent-danger)' : 'var(--accent-cyan)', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                 title="Оновити поїздки з хмари"
               >
                 <RefreshCw size={13} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
-                {isSyncing ? 'Оновлення...' : 'Оновити'}
+                {isSyncing ? 'Оновлення...' : cloudStatus === 'offline' ? '🔴 Офлайн' : 'Оновити'}
               </button>
             </div>
 

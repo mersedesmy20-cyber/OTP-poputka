@@ -103,6 +103,7 @@ export interface Trip {
   status: TripStatus;
   stops: TripStop[];
   createdAt: string;
+  updatedAt?: string;
   driverLiveStatus?: 'ready' | 'departed' | 'arrived' | 'delayed_10' | 'delayed_15';
 }
 
