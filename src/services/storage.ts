@@ -136,6 +136,8 @@ function setItem<T>(key: string, value: T): void {
 // ─── Data Sanitization ───
 function sanitizeTrip(t: any): Trip | null {
   if (!t || typeof t !== 'object' || !t.id) return null;
+  if (TEST_TRIP_IDS.includes(String(t.id))) return null;
+  if (t.driverName && TEST_DRIVER_NAMES.includes(String(t.driverName).trim())) return null;
   return {
     id: String(t.id),
     driverId: t.driverId || 'usr_unknown',
@@ -239,8 +241,22 @@ function mergeNotifications(local: AppNotification[], cloud: AppNotification[], 
   return Array.from(map.values());
 }
 
-// Filter out old test trip IDs
-const TEST_TRIP_IDS = ['trip_1', 'trip_2', 'trip_3', 'trip_4_evening'];
+// Filter out old test trip IDs and test driver names
+const TEST_TRIP_IDS = [
+  'trip_1', 'trip_2', 'trip_3', 'trip_4_evening',
+  't1', 't2', 't3', 't4', 't_test',
+  'mock_1', 'mock_2', 'mock_3', 'demo_1', 'demo_2'
+];
+
+const TEST_DRIVER_NAMES = [
+  'Олена Шевченко',
+  'Олександр Коваль',
+  'Сергій Романенко',
+  'Дмитро Мельник',
+  'Анна Ткаченко',
+  'Тест',
+  'Тестовий Водій'
+];
 
 // ─── Main Storage Service ───
 export const StorageService = {
