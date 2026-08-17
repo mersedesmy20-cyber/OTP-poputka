@@ -24,11 +24,10 @@ export const TripFilter: React.FC<Props> = ({
   onReset,
 }) => {
   const hasActiveFilters = selectedDistrictId !== '' || selectedTripType !== '' || selectedRecurrence !== '';
-  const topDistricts = districts.slice(0, 7);
 
   return (
     <div style={{ marginBottom: '10px' }}>
-      {/* Quick Filter Pills Bar Only */}
+      {/* Quick Filter Pills Bar */}
       <div className="filter-chips-scroll" style={{ paddingBottom: '4px' }}>
         {hasActiveFilters && (
           <button
@@ -44,21 +43,21 @@ export const TripFilter: React.FC<Props> = ({
           className={`chip-pill ${!hasActiveFilters ? 'active' : ''}`}
           onClick={onReset}
         >
-          🔥 Усі поїздки
+          🔥 Усі ({districts.length} районів)
         </button>
 
         <button
           className={`chip-pill ${selectedTripType === 'to_office' ? 'active' : ''}`}
           onClick={() => onSelectTripType(selectedTripType === 'to_office' ? '' : 'to_office')}
         >
-          🏢 До ГО
+          🏢 До ГО Жилянська
         </button>
 
         <button
           className={`chip-pill ${selectedTripType === 'from_office' ? 'active' : ''}`}
           onClick={() => onSelectTripType(selectedTripType === 'from_office' ? '' : 'from_office')}
         >
-          🏠 Додому
+          🏡 Додому з роботи
         </button>
 
         <button
@@ -68,11 +67,13 @@ export const TripFilter: React.FC<Props> = ({
           🔄 Через день
         </button>
 
-        {topDistricts.map(d => (
+        {/* All districts available with horizontal scroll */}
+        {districts.map(d => (
           <button
             key={d.id}
             className={`chip-pill ${selectedDistrictId === d.id ? 'active' : ''}`}
             onClick={() => onSelectDistrict(selectedDistrictId === d.id ? '' : d.id)}
+            title={d.cityPart}
           >
             📍 {d.name}
           </button>

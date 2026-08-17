@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Trip, TripRequest } from '../../types';
-import { X, Clock, Car, MessageCircle, Check, Trash2 } from 'lucide-react';
+import { X, Clock, Car, MessageCircle, Check, Trash2, MapPin } from 'lucide-react';
+import { TripMiniMap } from '../map/TripMiniMap';
 
 interface Props {
   isOpen: boolean;
@@ -13,6 +14,7 @@ interface Props {
   onUpdateDriverStatus: (tripId: string, status: Trip['driverLiveStatus']) => void;
   onUpdatePassengerStatus: (requestId: string, status: TripRequest['passengerLiveStatus']) => void;
   onDeleteTrip?: (tripId: string) => void;
+  onCancelRequest?: (requestId: string) => void;
 }
 
 export const TripDetailsModal: React.FC<Props> = ({
@@ -26,6 +28,7 @@ export const TripDetailsModal: React.FC<Props> = ({
   onUpdateDriverStatus,
   onUpdatePassengerStatus,
   onDeleteTrip,
+  onCancelRequest,
 }) => {
   if (!isOpen || !trip) return null;
 
@@ -155,10 +158,14 @@ export const TripDetailsModal: React.FC<Props> = ({
 
         {/* Route Stops Timeline */}
         <div style={{ marginBottom: '20px' }}>
-          <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '10px', color: 'var(--text-muted)' }}>
-            Маршрут та зупинки ({trip.departureTime})
+          <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '10px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <MapPin size={15} color="var(--accent-green)" /> Точки посадки та маршрут ({trip.departureTime})
           </h3>
-          <div style={{ borderLeft: '2px dashed var(--accent-green)', paddingLeft: '14px', marginLeft: '8px' }}>
+          
+          {/* Mini Interactive Map */}
+          <TripMiniMap trip={trip} height="190px" />
+
+          <div style={{ borderLeft: '2px dashed var(--accent-green)', paddingLeft: '14px', marginLeft: '8px', marginTop: '12px' }}>
             {trip.stops.map((stop, idx) => (
               <div key={stop.id} style={{ position: 'relative', marginBottom: '12px' }}>
                 <div style={{ position: 'absolute', left: '-20px', top: '2px', width: '10px', height: '10px', borderRadius: '50%', background: idx === 0 ? 'var(--accent-green)' : idx === trip.stops.length - 1 ? 'var(--accent-cyan)' : 'var(--text-dim)' }} />
@@ -224,12 +231,27 @@ export const TripDetailsModal: React.FC<Props> = ({
           )}
         </div>
 
-        <div style={{ marginTop: '20px', paddingTop: '12px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ marginTop: '20px', paddingTop: '12px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
           {isDriver ? (
             <button className="btn btn-danger" style={{ fontSize: '12px', padding: '8px 12px' }} onClick={handleDelete}>
               <Trash2 size={15} /> Видалити поїздку
             </button>
-          ) : <div />}
+          ) : myRequest && (myRequest.status === 'approved' || myRequest.status === 'pending') ? (
+            <button
+              className="btn btn-danger"
+              style={{ fontSize: '12px', padding: '8px 12px', background: 'rgba(239, 68, 68, 0.15)', color: 'var(--accent-danger)', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+              onClick={() => {
+                if (window.confirm('Ви впевнені, що бажаєте скасувати своє бронювання?')) {
+                  if (onCancelRequest) onCancelRequest(myRequest.id);
+                  onClose();
+                }
+              }}
+            >
+              Скасувати моє бронювання
+            </button>
+          ) : (
+            <div />
+          )}
 
           <button className="btn btn-secondary" onClick={onClose}>
             Закрити

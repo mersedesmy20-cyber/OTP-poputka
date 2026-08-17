@@ -522,33 +522,61 @@ export const StorageService = {
     const requests = this.getRequests();
     const req = requests.find(r => r.id === requestId);
     if (req) {
+      const prevStatus = req.status;
       req.status = status;
       setItem(KEYS.REQUESTS, requests);
 
       const trip = this.getTrips().find(t => t.id === req.tripId);
-      if (trip && status === 'approved') {
-        trip.availableSeats = Math.max(0, trip.availableSeats - req.requestedSeats);
-        if (trip.availableSeats === 0) {
-          trip.status = 'FULL';
-        }
-        this.updateTrip(trip);
+      if (trip) {
+        // If approving previously unapproved request: decrement available seats
+        if (prevStatus !== 'approved' && status === 'approved') {
+          trip.availableSeats = Math.max(0, trip.availableSeats - req.requestedSeats);
+          if (trip.availableSeats === 0) {
+            trip.status = 'FULL';
+          }
+          this.updateTrip(trip);
 
-        // This notification will be synced to cloud and delivered to passenger's device
-        this.addNotification({
-          id: 'notif_' + Date.now(),
-          userId: req.passengerId,
-          title: '🎉 Ваше місце підтверджено!',
-          message: `Водій ${trip.driverName} підтвердив ваше місце на поїздку (${trip.departureTime}, ${trip.originDistrictName} -> ${trip.destinationOfficeName})`,
-          type: 'request_approved',
-          tripId: trip.id,
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        });
+          this.addNotification({
+            id: 'notif_' + Date.now(),
+            userId: req.passengerId,
+            title: '🎉 Ваше місце підтверджено!',
+            message: `Водій ${trip.driverName} підтвердив ваше місце на поїздку (${trip.departureTime}, ${trip.originDistrictName} ➔ ${trip.destinationOfficeName})`,
+            type: 'request_approved',
+            tripId: trip.id,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          });
+        }
+        // If cancelling or rejecting previously approved request: restore available seats!
+        else if (prevStatus === 'approved' && (status === 'rejected' || status === 'cancelled')) {
+          trip.availableSeats = Math.min(trip.initialSeats || 4, trip.availableSeats + req.requestedSeats);
+          if (trip.status === 'FULL' && trip.availableSeats > 0) {
+            trip.status = 'PUBLISHED';
+          }
+          this.updateTrip(trip);
+
+          // If passenger cancelled, notify driver
+          if (status === 'cancelled') {
+            this.addNotification({
+              id: 'notif_' + Date.now(),
+              userId: trip.driverId,
+              title: 'ℹ️ Пасажир скасував бронювання',
+              message: `Колега ${req.passengerName} скасував(ла) бронювання ${req.requestedSeats} місця. Місце знову доступне!`,
+              type: 'trip_cancelled',
+              tripId: trip.id,
+              isRead: false,
+              createdAt: new Date().toISOString(),
+            });
+          }
+        }
       }
 
-      // Push updated status to cloud immediately so other device sees it
       this.syncToCloud();
     }
+  },
+
+  cancelRequest(requestId: string): void {
+    this.updateRequestStatus(requestId, 'cancelled');
   },
 
   // ════════════════════════

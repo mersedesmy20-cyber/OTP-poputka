@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Trip } from '../../types';
 import { X, Check, MapPin, User, MessageSquare } from 'lucide-react';
 
@@ -15,16 +15,22 @@ export const BookingModal: React.FC<Props> = ({
   trip,
   onConfirmBooking,
 }) => {
-  if (!isOpen || !trip) return null;
-
-  const defaultSpot = trip.stops[0]?.name || trip.originSpot;
-  const [pickupSpot, setPickupSpot] = useState<string>(defaultSpot);
+  const [pickupSpot, setPickupSpot] = useState<string>('');
   const [requestedSeats, setRequestedSeats] = useState<number>(1);
   const [note, setNote] = useState<string>('');
 
+  useEffect(() => {
+    if (trip) {
+      const defaultSpot = trip.stops[0]?.name || trip.originSpot;
+      setPickupSpot(defaultSpot);
+    }
+  }, [trip]);
+
+  if (!isOpen || !trip) return null;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onConfirmBooking(trip, requestedSeats, pickupSpot, note);
+    onConfirmBooking(trip, requestedSeats, pickupSpot || trip.originSpot, note);
     onClose();
   };
 

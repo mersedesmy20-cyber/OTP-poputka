@@ -10,9 +10,11 @@ import { BookingModal } from './components/trips/BookingModal';
 import { TelegramBotModal } from './components/telegram/TelegramBotModal';
 import { AdminModal } from './components/admin/AdminModal';
 import { ProfileTab } from './components/profile/ProfileTab';
+import { TripMapView } from './components/map/TripMapView';
 
 import {
   Home,
+  Map,
   Search,
   PlusCircle,
   Car,
@@ -53,7 +55,7 @@ export const App: React.FC = () => {
   const [notifications, setNotifications] = useState<AppNotification[]>(StorageService.getNotifications());
 
   // UI Active Navigation & Modals State
-  const [activeTab, setActiveTab] = useState<'home' | 'search' | 'my_trips' | 'profile'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'map' | 'search' | 'my_trips' | 'profile'>('home');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
@@ -299,6 +301,14 @@ export const App: React.FC = () => {
     showToast('❌ Заявку відхилено.');
   };
 
+  const handleCancelRequest = (requestId: string) => {
+    triggerHaptic('medium');
+    StorageService.cancelRequest(requestId);
+    setRequests(StorageService.getRequests());
+    setTrips(StorageService.getTrips());
+    showToast('ℹ️ Ваше бронювання скасовано, місце звільнено.');
+  };
+
   const handleUpdateDriverStatus = (tripId: string, status: Trip['driverLiveStatus']) => {
     triggerHaptic('medium');
     const trip = trips.find(t => t.id === tripId);
@@ -491,14 +501,24 @@ export const App: React.FC = () => {
                 <span className="badge badge-green" style={{ fontSize: '11px', padding: '1px 6px' }}>{filteredTrips.length}</span>
               </div>
 
-              <button
-                onClick={handleManualSync}
-                style={{ background: 'none', border: 'none', color: cloudStatus === 'offline' ? 'var(--accent-danger)' : 'var(--accent-cyan)', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                title="Оновити поїздки з хмари"
-              >
-                <RefreshCw size={12} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
-                {isSyncing ? '...' : cloudStatus === 'offline' ? '🔴 Офлайн' : 'Оновити'}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button
+                  onClick={() => { triggerHaptic('light'); setActiveTab('map'); }}
+                  style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid var(--accent-green)', color: 'var(--accent-green)', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  title="Переглянути всі поїздки на інтерактивній карті"
+                >
+                  <Map size={12} /> На карті
+                </button>
+
+                <button
+                  onClick={handleManualSync}
+                  style={{ background: 'none', border: 'none', color: cloudStatus === 'offline' ? 'var(--accent-danger)' : 'var(--accent-cyan)', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  title="Оновити поїздки з хмари"
+                >
+                  <RefreshCw size={12} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
+                  {isSyncing ? '...' : cloudStatus === 'offline' ? '🔴 Офлайн' : 'Оновити'}
+                </button>
+              </div>
             </div>
 
             {/* Trip Cards Feed or Onboarding empty state */}
@@ -541,7 +561,21 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* Tab 2: SEARCH */}
+        {/* Tab: MAP (Interactive Map View) */}
+        {activeTab === 'map' && (
+          <div>
+            <TripMapView
+              trips={trips}
+              userRequests={requests}
+              onOpenDetails={(t) => setSelectedTripDetails(t)}
+              onBookSeat={handleOpenBookingModal}
+              currentUserId={user.id}
+              isLightTheme={isLightTheme}
+            />
+          </div>
+        )}
+
+        {/* Tab: SEARCH */}
         {activeTab === 'search' && (
           <div>
             <TripFilter
@@ -675,9 +709,9 @@ export const App: React.FC = () => {
           <Home size={20} />
           Головна
         </button>
-        <button className={`nav-item ${activeTab === 'search' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('search'); }}>
-          <Search size={20} />
-          Пошук
+        <button className={`nav-item ${activeTab === 'map' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('map'); }}>
+          <Map size={20} />
+          Карта
         </button>
 
         {/* Center Floating Create (+) Button */}
@@ -685,9 +719,13 @@ export const App: React.FC = () => {
           <PlusCircle size={26} />
         </button>
 
+        <button className={`nav-item ${activeTab === 'search' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('search'); }}>
+          <Search size={20} />
+          Пошук
+        </button>
         <button className={`nav-item ${activeTab === 'my_trips' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('my_trips'); }}>
           <Car size={20} />
-          Мої поїздки
+          Поїздки
         </button>
         <button className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('profile'); }}>
           <User size={20} />
@@ -757,6 +795,7 @@ export const App: React.FC = () => {
         onRejectRequest={handleRejectRequest}
         onUpdateDriverStatus={handleUpdateDriverStatus}
         onUpdatePassengerStatus={handleUpdatePassengerStatus}
+        onCancelRequest={handleCancelRequest}
         onDeleteTrip={(tripId) => {
           triggerHaptic('medium');
           StorageService.deleteTrip(tripId);

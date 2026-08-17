@@ -31,8 +31,6 @@ export const TripFormModal: React.FC<Props> = ({
   currentUserTelegram,
   currentUserPhone,
 }) => {
-  if (!isOpen) return null;
-
   const hasVehicles = vehicles.length > 0;
 
   const [tripType, setTripType] = useState<TripType>('to_office');
@@ -50,6 +48,8 @@ export const TripFormModal: React.FC<Props> = ({
   const [stops, setStops] = useState<{ id: string; name: string; estimatedTime: string }[]>([
     { id: 'stop_1', name: 'м. Почайна', estimatedTime: '08:05' }
   ]);
+
+  if (!isOpen) return null;
 
   const selectedDistrict = districts.find(d => d.id === districtId) || districts[0];
   const selectedOffice = offices.find(o => o.id === officeId) || offices[0];

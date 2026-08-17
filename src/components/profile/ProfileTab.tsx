@@ -35,7 +35,7 @@ export const ProfileTab: React.FC<Props> = ({
   const [model, setModel] = useState('Camry');
   const [color, setColor] = useState('Чорний');
   const [plateNumber, setPlateNumber] = useState('AA 5500 OP');
-  const [seats] = useState(4);
+  const [seats, setSeats] = useState<number>(4);
 
   const isTelegramSession = !!window.Telegram?.WebApp?.initDataUnsafe?.user;
 
@@ -205,9 +205,13 @@ export const ProfileTab: React.FC<Props> = ({
                 <label className="input-label">Держ. номер</label>
                 <input type="text" className="input-field" value={plateNumber} onChange={(e) => setPlateNumber(e.target.value)} required />
               </div>
+              <div className="input-group" style={{ gridColumn: '1 / -1' }}>
+                <label className="input-label">Кількість місць для пасажирів</label>
+                <input type="number" className="input-field" value={seats} min={1} max={8} onChange={(e) => setSeats(parseInt(e.target.value) || 4)} required />
+              </div>
             </div>
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '8px' }}>
-              Зберегти автомобілі
+            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '10px' }}>
+              Зберегти автомобіль
             </button>
           </form>
         )}

@@ -86,7 +86,7 @@ export const TelegramBotModal: React.FC<Props> = ({ isOpen, onClose, userName })
             </div>
             <div>
               <div style={{ fontWeight: '700', fontSize: '15px', color: 'white', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                @otp_ride_bot <CheckCircle size={14} color="#0088cc" />
+                @OTPTravelHubbot <CheckCircle size={14} color="#0088cc" />
               </div>
               <div style={{ fontSize: '12px', color: '#6c7883' }}>Офіційний Бот OTP Carpool</div>
             </div>
