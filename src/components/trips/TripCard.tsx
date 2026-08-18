@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Trip, TripRequest } from '../../types';
-import { Clock, MapPin, Car, MessageCircle, CheckCircle2, User, Fuel, Share2 } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 
 interface Props {
   trip: Trip;
@@ -11,12 +11,25 @@ interface Props {
   currentUserId: string;
 }
 
+/** Shorten long location names for the feed view */
+const shortenLocation = (name: string): string => {
+  // "ГО ОТПБанк (Головний офіс)" → "ГО"
+  if (name.toLowerCase().includes('го ') || name.toLowerCase().includes('головн')) {
+    return 'ГО';
+  }
+  // "Троєщина (ТРЦ Район (зупинка))" → "Троєщина"
+  const parenIndex = name.indexOf('(');
+  if (parenIndex > 0) {
+    return name.substring(0, parenIndex).trim();
+  }
+  return name;
+};
+
 export const TripCard: React.FC<Props> = ({
   trip,
   userRequests,
   onBookSeat,
   onOpenDetails,
-  onShareTrip,
   currentUserId,
 }) => {
   const isDriver = trip.driverId === currentUserId;
@@ -24,140 +37,114 @@ export const TripCard: React.FC<Props> = ({
   const isBooked = existingRequest?.status === 'approved';
   const isPending = existingRequest?.status === 'pending';
 
-  const getCompensationLabel = () => {
-    switch (trip.compensationType) {
-      case 'free':
-        return 'Безкоштовно';
-      case 'fixed_contribution':
-        return `${trip.compensationAmount} грн`;
-      case 'split_gas':
-        return 'Спліт за пальне';
-      default:
-        return 'Домовленість';
-    }
-  };
+  const origin = shortenLocation(trip.originDistrictName);
+  const destination = shortenLocation(trip.destinationOfficeName);
 
   return (
     <div
       className="card compact-trip-card"
       onClick={() => onOpenDetails(trip)}
       style={{
-        position: 'relative',
         cursor: 'pointer',
-        padding: '12px 14px',
-        marginBottom: '10px',
-        transition: 'transform 0.15s ease, border-color 0.15s ease',
+        padding: '14px 16px',
+        marginBottom: '8px',
       }}
     >
-      {/* Line 1: Header - Direction Badge, Time, Compensation */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span className={`badge ${trip.tripType === 'to_office' ? 'badge-green' : 'badge-purple'}`} style={{ fontSize: '11px', padding: '2px 8px' }}>
-            {trip.tripType === 'to_office' ? '🏢 До ГО' : '🏡 Додому'}
-          </span>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>
-            {trip.recurrence.label}
+      {/* Row 1: Route + Time */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '10px',
+      }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          fontSize: '15px',
+          fontWeight: '700',
+          color: 'var(--text-main)',
+          minWidth: 0,
+        }}>
+          <span style={{
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            background: trip.tripType === 'to_office' ? 'var(--accent-green)' : 'var(--accent-purple)',
+            flexShrink: 0,
+          }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {origin} → {destination}
           </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--accent-warning)', display: 'flex', alignItems: 'center', gap: '3px' }}>
-            <Fuel size={12} /> {getCompensationLabel()}
-          </span>
-          <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--accent-green)', display: 'flex', alignItems: 'center', gap: '3px', background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: '12px' }}>
-            <Clock size={14} /> {trip.departureTime}
-          </span>
-        </div>
-      </div>
-
-      {/* Line 2: Route Main Info */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', fontWeight: '700', marginBottom: '8px', color: 'var(--text-main)' }}>
-        <MapPin size={15} color="var(--accent-green)" />
-        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {trip.originDistrictName} ({trip.originSpot})
-        </span>
-        <span style={{ color: 'var(--text-dim)' }}>➔</span>
-        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--accent-cyan)' }}>
-          {trip.destinationOfficeName}
+        <span style={{
+          fontSize: '15px',
+          fontWeight: '800',
+          color: 'var(--accent-green)',
+          flexShrink: 0,
+          marginLeft: '12px',
+        }}>
+          {trip.departureTime}
         </span>
       </div>
 
-      {/* Line 3: Driver Info + Seats + Quick Action */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', background: 'var(--bg-primary)', padding: '6px 10px', borderRadius: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+      {/* Row 2: Driver + Action */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
           <img
             src={trip.driverAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100'}
             alt={trip.driverName}
-            style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid var(--accent-green)' }}
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              objectFit: 'cover',
+              border: '2px solid var(--border-color)',
+              flexShrink: 0,
+            }}
           />
-          <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            <div style={{ fontSize: '12px', fontWeight: '700', lineHeight: '1.2' }}>{trip.driverName}</div>
-            <div style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Car size={11} color="var(--accent-cyan)" /> {trip.vehicleInfo} ({trip.vehiclePlate})
-            </div>
-          </div>
+          <span style={{
+            fontSize: '13px',
+            fontWeight: '600',
+            color: 'var(--text-muted)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {trip.driverName}
+          </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-          {/* Quick Telegram Chat Button */}
-          {trip.driverTelegram && (
-            <a
-              href={`https://t.me/${trip.driverTelegram.replace('@', '')}`}
-              target="_blank"
-              rel="noreferrer"
-              className="icon-btn"
-              title="Написати в TG"
-              onClick={(e) => e.stopPropagation()}
-              style={{ width: '28px', height: '28px', color: '#0088cc', borderColor: 'rgba(0,136,204,0.3)', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >
-              <MessageCircle size={15} />
-            </a>
-          )}
-
-          {/* Share Button */}
-          {onShareTrip && (
+        <div onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0 }}>
+          {isDriver ? (
+            <button className="btn btn-outline btn-compact" onClick={() => onOpenDetails(trip)}>
+              Керувати
+            </button>
+          ) : isBooked ? (
+            <button className="btn btn-booked btn-compact" onClick={() => onOpenDetails(trip)}>
+              <CheckCircle2 size={13} /> Готово
+            </button>
+          ) : isPending ? (
+            <button className="btn btn-pending btn-compact" onClick={() => onOpenDetails(trip)}>
+              Очікує
+            </button>
+          ) : trip.availableSeats > 0 ? (
             <button
-              className="icon-btn"
-              title="Поділитися"
-              onClick={(e) => {
-                e.stopPropagation();
-                onShareTrip(trip);
-              }}
-              style={{ width: '28px', height: '28px', color: 'var(--accent-green)', borderColor: 'rgba(16,185,129,0.3)', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              className="btn btn-primary btn-compact"
+              onClick={() => onBookSeat(trip, true)}
             >
-              <Share2 size={14} />
+              Забронювати
+            </button>
+          ) : (
+            <button className="btn btn-secondary btn-compact" disabled>
+              Зайнято
             </button>
           )}
-
-          {/* Single Primary Action Button */}
-          <div onClick={(e) => e.stopPropagation()}>
-            {isDriver ? (
-              <button className="btn btn-outline" style={{ fontSize: '11px', padding: '5px 10px', height: '30px' }} onClick={() => onOpenDetails(trip)}>
-                Керувати
-              </button>
-            ) : isBooked ? (
-              <button className="btn btn-primary" style={{ fontSize: '11px', padding: '5px 10px', height: '30px', background: '#10b981' }} onClick={() => onOpenDetails(trip)}>
-                <CheckCircle2 size={13} /> Підтверджено
-              </button>
-            ) : isPending ? (
-              <button className="btn btn-secondary" style={{ fontSize: '11px', padding: '5px 10px', height: '30px', color: 'var(--accent-warning)' }} onClick={() => onOpenDetails(trip)}>
-                Очікує
-              </button>
-            ) : trip.availableSeats > 0 ? (
-              <button
-                className="btn btn-primary"
-                style={{ fontSize: '11px', padding: '5px 12px', height: '30px', whiteSpace: 'nowrap' }}
-                onClick={() => onBookSeat(trip, true)}
-                title="Забронювати в 1 клік"
-              >
-                <User size={12} /> Забронювати ({trip.availableSeats})
-              </button>
-            ) : (
-              <button className="btn btn-secondary" style={{ fontSize: '11px', padding: '5px 8px', height: '30px' }} disabled>
-                Немає місць
-              </button>
-            )}
-          </div>
         </div>
       </div>
     </div>

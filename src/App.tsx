@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StorageService } from './services/storage';
 import type { UserProfile, UserRoleMode, Trip, TripRequest, Vehicle, District, Office, AppSettings, AppNotification } from './types';
-import { RoleSwitchBanner } from './components/RoleSwitchBanner';
 import { TripCard } from './components/trips/TripCard';
 import { TripFilter } from './components/trips/TripFilter';
 import { TripFormModal } from './components/trips/TripFormModal';
@@ -27,10 +26,6 @@ import {
   Info,
   Sun,
   Moon,
-  RefreshCw,
-  Wifi,
-  WifiOff,
-  Cloud
 } from 'lucide-react';
 import './styles/theme.css';
 
@@ -104,7 +99,7 @@ export const App: React.FC = () => {
   const [selectedRecurrence, setSelectedRecurrence] = useState<string>('');
 
   // Cloud Storage Sync State
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [, setIsSyncing] = useState(false);
   const [cloudStatus, setCloudStatus] = useState<'online' | 'syncing' | 'offline'>('online');
 
   const handleManualSync = async () => {
@@ -118,9 +113,9 @@ export const App: React.FC = () => {
     setIsSyncing(false);
     const status = StorageService.getCloudStatus();
     if (status === 'online') {
-      showToast('🔄 Стрічку поїздок оновлено з хмари!');
+      showToast('🔄 Дані оновлено');
     } else {
-      showToast('⚠️ Хмара недоступна, показуємо локальні дані');
+      showToast('⚠️ Офлайн режим');
     }
   };
 
@@ -149,7 +144,7 @@ export const App: React.FC = () => {
           try {
             window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success');
           } catch(e) {}
-          showToast('🎉 Водій підтвердив ваше місце на поїздку!');
+          showToast('🎉 Водій підтвердив ваше місце!');
         }
       });
     };
@@ -164,13 +159,11 @@ export const App: React.FC = () => {
       setCloudStatus(newStatus);
       checkApprovalEvents(reqs);
 
-      // If status changed from offline to online — notify and resync interval
       if (previousCloudStatus === 'offline' && newStatus === 'online') {
-        showToast('🟢 Хмара знову підключена! Дані синхронізовано.');
+        showToast('🟢 Підключено! Дані синхронізовано.');
       }
       previousCloudStatus = newStatus;
 
-      // Adaptive polling: restart interval with new timing based on circuit breaker
       const newInterval = StorageService.getCloudPollInterval();
       if (intervalId !== null) {
         clearInterval(intervalId);
@@ -178,7 +171,6 @@ export const App: React.FC = () => {
       intervalId = setInterval(doSync, newInterval);
     };
 
-    // Initial fetch from global cloud store
     StorageService.syncFromCloud().then(cloudTrips => {
       setTrips(cloudTrips);
       const reqs = StorageService.getRequests();
@@ -187,7 +179,6 @@ export const App: React.FC = () => {
       setCloudStatus(StorageService.getCloudStatus());
       reqs.filter(r => r.passengerId === user.id && r.status === 'approved').forEach(r => lastApprovedReqIds.add(r.id));
 
-      // Start adaptive polling
       const pollMs = StorageService.getCloudPollInterval();
       intervalId = setInterval(doSync, pollMs);
     });
@@ -230,20 +221,19 @@ export const App: React.FC = () => {
     setSelectedTripType('');
     setSelectedRecurrence('');
     setActiveTab('home');
-    showToast('🎉 Поїздку успішно опубліковано для колег!');
+    showToast('🎉 Поїздку опубліковано!');
   };
 
   const handleOpenBookingModal = (trip: Trip, isQuickBooking: boolean = false) => {
     triggerHaptic('light');
     const existingReq = requests.find(r => r.tripId === trip.id && r.passengerId === user.id);
     if (existingReq) {
-      showToast('⚠️ Ви вже забронювали місце на цю поїздку!');
+      showToast('⚠️ Ви вже забронювали цю поїздку');
       setSelectedTripDetails(trip);
       return;
     }
 
     if (isQuickBooking) {
-      // 1-Click Fast Booking
       const defaultSpot = trip.stops[0]?.name || trip.originSpot;
       handleConfirmBooking(trip, 1, defaultSpot);
       return;
@@ -278,9 +268,9 @@ export const App: React.FC = () => {
       StorageService.updateRequestStatus(newRequest.id, 'approved');
       setRequests(StorageService.getRequests());
       setTrips(StorageService.getTrips());
-      showToast(`✅ ${requestedSeats} місце(ця) на поїздку (${trip.departureTime}) підтверджено!`);
+      showToast(`✅ ${requestedSeats} місце підтверджено!`);
     } else {
-      showToast(`📩 Заявку на ${requestedSeats} місць відправлено водію ${trip.driverName}!`);
+      showToast(`📩 Заявку відправлено водію`);
     }
 
     setSelectedTripDetails(trip);
@@ -291,14 +281,14 @@ export const App: React.FC = () => {
     StorageService.updateRequestStatus(requestId, 'approved');
     setRequests(StorageService.getRequests());
     setTrips(StorageService.getTrips());
-    showToast('✅ Заявку пасажира підтверджено!');
+    showToast('✅ Заявку підтверджено!');
   };
 
   const handleRejectRequest = (requestId: string) => {
     triggerHaptic('medium');
     StorageService.updateRequestStatus(requestId, 'rejected');
     setRequests(StorageService.getRequests());
-    showToast('❌ Заявку відхилено.');
+    showToast('❌ Заявку відхилено');
   };
 
   const handleCancelRequest = (requestId: string) => {
@@ -306,7 +296,7 @@ export const App: React.FC = () => {
     StorageService.cancelRequest(requestId);
     setRequests(StorageService.getRequests());
     setTrips(StorageService.getTrips());
-    showToast('ℹ️ Ваше бронювання скасовано, місце звільнено.');
+    showToast('Бронювання скасовано');
   };
 
   const handleUpdateDriverStatus = (tripId: string, status: Trip['driverLiveStatus']) => {
@@ -316,7 +306,7 @@ export const App: React.FC = () => {
       trip.driverLiveStatus = status;
       StorageService.updateTrip(trip);
       setTrips(StorageService.getTrips());
-      showToast(`📍 Статус водія оновлено: ${status === 'departed' ? 'Ви вирушили!' : status === 'arrived' ? 'Ви на точці!' : 'Затримуюсь'}`);
+      showToast(`📍 Статус оновлено`);
     }
   };
 
@@ -331,7 +321,7 @@ export const App: React.FC = () => {
         list[idx] = req;
         localStorage.setItem('otp_carpool_requests', JSON.stringify(list));
         window.dispatchEvent(new Event('otp_storage_updated'));
-        showToast('📍 Статус пасажира оновлено!');
+        showToast('📍 Статус оновлено');
       }
     }
   };
@@ -341,9 +331,9 @@ export const App: React.FC = () => {
     const text = `🚗 Поїздка з колегою (${trip.driverName}): ${trip.originDistrictName} ➡️ ${trip.destinationOfficeName} о ${trip.departureTime} (${trip.recurrence.label}).\nБронюйте у боті: https://t.me/OTPTravelHubbot`;
     try {
       navigator.clipboard.writeText(text);
-      showToast('🔗 Посилання скопійовано! Поділіться ним у чаті колег.');
+      showToast('🔗 Посилання скопійовано!');
     } catch (e) {
-      showToast('🚗 Посилання готова для чату Telegram!');
+      showToast('🚗 Посилання готова!');
     }
   };
 
@@ -361,192 +351,95 @@ export const App: React.FC = () => {
 
   return (
     <div className="app-container">
-      {/* Floating Toast Notification */}
+      {/* Toast */}
       {toastMessage && (
         <div className="toast-container">
           <div className="toast-item">
-            <CheckCircle2 size={20} color="var(--accent-green)" />
+            <CheckCircle2 size={18} color="var(--accent-green)" />
             <span style={{ flex: 1 }}>{toastMessage}</span>
           </div>
         </div>
       )}
 
-      {/* Top App Header */}
+      {/* ===== MINIMAL HEADER ===== */}
       <header className="top-bar">
         <div className="logo-group">
           <div className="logo-icon">OTP</div>
           <div className="brand-text">
-            <h1>{settings.appName}</h1>
-            <p>ГО Жилянська, 43</p>
-          </div>
-          {/* Cloud Status Indicator */}
-          <div
-            title={cloudStatus === 'online' ? 'Хмара підключена' : cloudStatus === 'syncing' ? 'Синхронізація...' : 'Хмара недоступна'}
-            style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', fontWeight: '700', color: cloudStatus === 'online' ? 'var(--accent-green)' : cloudStatus === 'syncing' ? 'var(--accent-warning)' : 'var(--accent-danger)', marginLeft: '6px' }}
-          >
-            {cloudStatus === 'online' ? <Wifi size={12} /> : cloudStatus === 'syncing' ? <Cloud size={12} /> : <WifiOff size={12} />}
-            {cloudStatus === 'offline' ? 'офлайн' : ''}
+            <h1>Попутник</h1>
           </div>
         </div>
 
         <div className="header-actions">
-          {/* Light / Dark Theme Switcher Button */}
           <button
             className="icon-btn"
-            onClick={toggleTheme}
-            title={isLightTheme ? 'Увімкнути Темну тему' : 'Увімкнути Світлу тему'}
+            style={{ color: unreadNotifsCount > 0 ? 'var(--accent-green)' : 'var(--text-muted)' }}
+            onClick={() => { triggerHaptic('light'); setIsNotificationsOpen(true); }}
           >
-            {isLightTheme ? <Moon size={19} color="var(--accent-purple)" /> : <Sun size={19} color="var(--accent-warning)" />}
-          </button>
-
-          {/* Notifications Bell */}
-          <button
-            className="icon-btn"
-            style={{ color: unreadNotifsCount > 0 ? 'var(--accent-green)' : 'var(--text-main)' }}
-            onClick={() => {
-              triggerHaptic('light');
-              setIsNotificationsOpen(true);
-            }}
-            title="Сповіщення"
-          >
-            <Bell size={20} />
+            <Bell size={18} />
             {unreadNotifsCount > 0 && <span className="badge-dot" />}
           </button>
-
-          {/* Telegram Bot Simulation launch button */}
-          <button
-            className="icon-btn"
-            style={{ color: '#0088cc', borderColor: 'rgba(0,136,204,0.4)' }}
-            onClick={() => {
-              triggerHaptic('light');
-              setIsTelegramModalOpen(true);
-            }}
-            title="Телеграм-бот"
-          >
-            <Bot size={20} />
-          </button>
-
-          {/* Admin Dashboard switch */}
-          {user.isAdmin && (
-            <button
-              className="icon-btn"
-              style={{ color: 'var(--accent-warning)', borderColor: 'rgba(245,158,11,0.4)' }}
-              onClick={() => {
-                triggerHaptic('light');
-                setIsAdminModalOpen(true);
-              }}
-              title="Адмін Панель"
-            >
-              <Shield size={19} />
-            </button>
-          )}
         </div>
       </header>
 
-      {/* Role Switcher Bar ( Driver vs Passenger Toggle ) */}
-      <div className="role-switch-container">
-        <button
-          className={`role-btn ${roleMode === 'driver' ? 'active driver' : ''}`}
-          onClick={() => handleRoleChange('driver')}
-        >
-          <Car size={18} /> Я сьогодні ВОДІЙ
-        </button>
-        <button
-          className={`role-btn ${roleMode === 'passenger' ? 'active passenger' : ''}`}
-          onClick={() => handleRoleChange('passenger')}
-        >
-          <User size={18} /> Я сьогодні ПАСАЖИР
-        </button>
-      </div>
-
-      {/* Main Screen Content */}
-      <main style={{ paddingBottom: '20px' }}>
-        {/* Tab 1: HOME */}
+      {/* ===== MAIN CONTENT ===== */}
+      <main>
+        {/* Tab: HOME */}
         {activeTab === 'home' && (
           <div>
-            <RoleSwitchBanner
-              currentRole={roleMode}
-              onSelectRole={handleRoleChange}
-              onOpenCreateModal={() => {
-                triggerHaptic('light');
-                setIsCreateModalOpen(true);
-              }}
-              onOpenFilter={() => {
-                triggerHaptic('light');
-                setActiveTab('search');
-              }}
-              userDistrictName={userDistrictObj?.name}
-            />
-
-            {/* Quick District Filter component */}
-            <TripFilter
-              districts={districts}
-              selectedDistrictId={selectedDistrictId}
-              onSelectDistrict={setSelectedDistrictId}
-              selectedTripType={selectedTripType}
-              onSelectTripType={setSelectedTripType}
-              selectedRecurrence={selectedRecurrence}
-              onSelectRecurrence={setSelectedRecurrence}
-              onReset={() => {
-                setSelectedDistrictId('');
-                setSelectedTripType('');
-                setSelectedRecurrence('');
-              }}
-            />
-
-            {/* Feed Header */}
-            <div style={{ padding: '0 4px', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: '13px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-main)' }}>
-                <span>{roleMode === 'driver' ? 'Створені поїздки' : 'Доступні авто'}</span>
-                <span className="badge badge-green" style={{ fontSize: '11px', padding: '1px 6px' }}>{filteredTrips.length}</span>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <button
-                  onClick={() => { triggerHaptic('light'); setActiveTab('map'); }}
-                  style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid var(--accent-green)', color: 'var(--accent-green)', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                  title="Переглянути всі поїздки на інтерактивній карті"
-                >
-                  <Map size={12} /> На карті
-                </button>
-
-                <button
-                  onClick={handleManualSync}
-                  style={{ background: 'none', border: 'none', color: cloudStatus === 'offline' ? 'var(--accent-danger)' : 'var(--accent-cyan)', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                  title="Оновити поїздки з хмари"
-                >
-                  <RefreshCw size={12} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
-                  {isSyncing ? '...' : cloudStatus === 'offline' ? '🔴 Офлайн' : 'Оновити'}
-                </button>
+            {/* Greeting */}
+            <div className="greeting-block">
+              <div className="greeting-text">Привіт, {user.name}! 👋</div>
+              <div className="greeting-district">
+                Район: <strong>{userDistrictObj?.name || 'Не вказано'}</strong>
               </div>
             </div>
 
-            {/* Trip Cards Feed or Onboarding empty state */}
-            {filteredTrips.length === 0 ? (
-              <div className="card" style={{ textAlign: 'center', padding: '24px 16px' }}>
-                <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-green)', marginBottom: '12px' }}>
-                  <Info size={24} />
-                </div>
-                <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '6px' }}>
-                  Вітаємо в корпоративному сервісі «Їдемо Разом»!
-                </h3>
-                <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginBottom: '16px', lineHeight: '1.4' }}>
-                  Поїздок за вибраним фільтром поки немає. Станьте першим, хто запропонує поїздку колегам до ГО Жилянська 43!
-                </p>
+            {/* Role Toggle */}
+            <div className="role-switch-container">
+              <button
+                className={`role-btn ${roleMode === 'driver' ? 'active driver' : ''}`}
+                onClick={() => handleRoleChange('driver')}
+              >
+                <Car size={18} /> Водій
+              </button>
+              <button
+                className={`role-btn ${roleMode === 'passenger' ? 'active passenger' : ''}`}
+                onClick={() => handleRoleChange('passenger')}
+              >
+                <User size={18} /> Пасажир
+              </button>
+            </div>
 
-                <div style={{ background: 'var(--bg-primary)', padding: '14px', borderRadius: 'var(--radius-md)', textAlign: 'left', fontSize: '12px', marginBottom: '16px' }}>
-                  <div style={{ fontWeight: '700', marginBottom: '8px', color: 'var(--text-main)' }}>Як це працює:</div>
-                  <div style={{ marginBottom: '6px' }}>1. 🚗 <strong>Якщо ви за кермом</strong> — опублікуйте графік «Через день» або вкажіть ваш час виїзду.</div>
-                  <div style={{ marginBottom: '6px' }}>2. 🚶‍♂️ <strong>Якщо ви пасажир</strong> — забронюйте місце в авто колеги з вашого району.</div>
-                  <div>3. 💬 <strong>Зв'язок у 1 клік</strong> — контакти та Telegram водія/пасажира відкриваються одразу.</div>
-                </div>
+            {/* Search Bar Trigger (opens search tab) */}
+            <div
+              className="search-bar-trigger"
+              onClick={() => { triggerHaptic('light'); setActiveTab('search'); }}
+            >
+              <Search size={18} color="var(--text-dim)" />
+              <span>Пошук поїздки...</span>
+            </div>
 
+            {/* Section Header */}
+            <div className="section-header">
+              <span className="section-title">Поїздки</span>
+              <span className="section-count">{trips.length}</span>
+            </div>
+
+            {/* Trip Cards Feed */}
+            {trips.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-state-icon">
+                  <Info size={28} />
+                </div>
+                <h3>Поки немає поїздок</h3>
+                <p>Станьте першим — опублікуйте поїздку для колег!</p>
                 <button className="btn btn-primary" onClick={() => setIsCreateModalOpen(true)}>
-                  <PlusCircle size={18} /> Створити першу поїздку
+                  <PlusCircle size={18} /> Створити поїздку
                 </button>
               </div>
             ) : (
-              filteredTrips.map(trip => (
+              trips.map(trip => (
                 <TripCard
                   key={trip.id}
                   trip={trip}
@@ -561,23 +454,25 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* Tab: MAP (Interactive Map View) */}
+        {/* Tab: MAP */}
         {activeTab === 'map' && (
-          <div>
-            <TripMapView
-              trips={trips}
-              userRequests={requests}
-              onOpenDetails={(t) => setSelectedTripDetails(t)}
-              onBookSeat={handleOpenBookingModal}
-              currentUserId={user.id}
-              isLightTheme={isLightTheme}
-            />
-          </div>
+          <TripMapView
+            trips={trips}
+            userRequests={requests}
+            onOpenDetails={(t) => setSelectedTripDetails(t)}
+            onBookSeat={handleOpenBookingModal}
+            currentUserId={user.id}
+            isLightTheme={isLightTheme}
+          />
         )}
 
         {/* Tab: SEARCH */}
         {activeTab === 'search' && (
           <div>
+            <div style={{ padding: '16px 16px 0' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '12px' }}>Пошук</h2>
+            </div>
+
             <TripFilter
               districts={districts}
               selectedDistrictId={selectedDistrictId}
@@ -593,13 +488,34 @@ export const App: React.FC = () => {
               }}
             />
 
-            <div style={{ padding: '0 16px', marginBottom: '8px', fontWeight: '700', fontSize: '14px', color: 'var(--text-muted)' }}>
-              Результати пошуку ({filteredTrips.length})
+            {/* Map toggle in search */}
+            <div style={{ padding: '0 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>
+                Знайдено: {filteredTrips.length}
+              </span>
+              <button
+                onClick={() => { triggerHaptic('light'); setActiveTab('map'); }}
+                style={{
+                  background: 'none',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--text-muted)',
+                  borderRadius: '8px',
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <Map size={13} /> На карті
+              </button>
             </div>
 
             {filteredTrips.length === 0 ? (
-              <div className="card" style={{ textAlign: 'center', padding: '24px 16px' }}>
-                <p style={{ color: 'var(--text-dim)', fontSize: '13px' }}>Нічого не знайдено за вказаними фільтрами.</p>
+              <div className="empty-state">
+                <p style={{ color: 'var(--text-dim)' }}>Нічого не знайдено</p>
               </div>
             ) : (
               filteredTrips.map(trip => (
@@ -617,53 +533,71 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* Tab 3: MY TRIPS */}
+        {/* Tab: MY TRIPS */}
         {activeTab === 'my_trips' && (
           <div>
+            <div style={{ padding: '16px 16px 0' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '16px' }}>Мої поїздки</h2>
+            </div>
+
+            {/* As Driver */}
             <div className="card">
-              <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Car color="var(--accent-green)" /> Мої створені поїздки (як Водій)
+              <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '12px', color: 'var(--text-muted)' }}>
+                Як водій
               </h3>
               {trips.filter(t => t.driverId === user.id).length === 0 ? (
-                <p style={{ fontSize: '13px', color: 'var(--text-dim)' }}>Ви ще не створювали поїздок.</p>
+                <p style={{ fontSize: '13px', color: 'var(--text-dim)' }}>Немає створених поїздок</p>
               ) : (
                 trips.filter(t => t.driverId === user.id).map(trip => (
-                  <div key={trip.id} style={{ padding: '12px', background: 'var(--bg-primary)', borderRadius: 'var(--radius-md)', marginBottom: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '14px' }}>
-                      <span>{trip.originDistrictName} ➡️ {trip.destinationOfficeName}</span>
-                      <span style={{ color: 'var(--accent-green)' }}>{trip.departureTime}</span>
+                  <div key={trip.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border-color)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: '700', fontSize: '14px' }}>
+                        {trip.originDistrictName} → {trip.destinationOfficeName}
+                      </span>
+                      <span style={{ color: 'var(--accent-green)', fontWeight: '700', fontSize: '14px' }}>{trip.departureTime}</span>
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                      {trip.recurrence.label} • {trip.availableSeats} вільних місць
+                      {trip.recurrence.label} · {trip.availableSeats} місць
                     </div>
-                    <button className="btn btn-secondary" style={{ width: '100%', marginTop: '8px', fontSize: '12px', padding: '6px' }} onClick={() => setSelectedTripDetails(trip)}>
-                      Керувати пасажирами
+                    <button
+                      className="btn btn-secondary"
+                      style={{ width: '100%', marginTop: '8px', fontSize: '12px', padding: '8px', minHeight: '36px' }}
+                      onClick={() => setSelectedTripDetails(trip)}
+                    >
+                      Керувати
                     </button>
                   </div>
                 ))
               )}
             </div>
 
+            {/* As Passenger */}
             <div className="card">
-              <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <User color="var(--accent-cyan)" /> Мої забронювання (як Пасажир)
+              <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '12px', color: 'var(--text-muted)' }}>
+                Як пасажир
               </h3>
               {requests.filter(r => r.passengerId === user.id).length === 0 ? (
-                <p style={{ fontSize: '13px', color: 'var(--text-dim)' }}>Ви не подавали заявок на поїздки.</p>
+                <p style={{ fontSize: '13px', color: 'var(--text-dim)' }}>Немає бронювань</p>
               ) : (
                 requests.filter(r => r.passengerId === user.id).map(req => {
                   const targetTrip = trips.find(t => t.id === req.tripId);
                   return (
-                    <div key={req.id} style={{ padding: '12px', background: 'var(--bg-primary)', borderRadius: 'var(--radius-md)', marginBottom: '8px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '14px' }}>
-                        <span>{targetTrip?.originDistrictName || 'Поїздка'} ➡️ ГО Жилянська 43</span>
+                    <div key={req.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border-color)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: '700', fontSize: '14px' }}>
+                          {targetTrip?.originDistrictName || 'Поїздка'} → ГО
+                        </span>
                         <span className={`badge ${req.status === 'approved' ? 'badge-green' : 'badge-warning'}`} style={{ fontSize: '11px' }}>
-                          {req.status === 'approved' ? 'Підтверджено' : 'Очікує'}
+                          {req.status === 'approved' ? '✓' : '⏳'}
                         </span>
                       </div>
                       {targetTrip && (
-                        <button className="btn btn-secondary" style={{ width: '100%', marginTop: '8px', fontSize: '12px', padding: '6px' }} onClick={() => setSelectedTripDetails(targetTrip)}>
-                          Переглянути стани та час
+                        <button
+                          className="btn btn-secondary"
+                          style={{ width: '100%', marginTop: '8px', fontSize: '12px', padding: '8px', minHeight: '36px' }}
+                          onClick={() => setSelectedTripDetails(targetTrip)}
+                        >
+                          Деталі
                         </button>
                       )}
                     </div>
@@ -674,83 +608,127 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* Tab 4: PROFILE */}
+        {/* Tab: PROFILE */}
         {activeTab === 'profile' && (
-          <ProfileTab
-            user={user}
-            vehicles={vehicles}
-            districts={districts}
-            onSaveProfile={(updated) => {
-              StorageService.saveUser(updated);
-              setUser(StorageService.getUser());
-              showToast('Профіль успішно збережено!');
-            }}
-            onAddVehicle={(v) => {
-              StorageService.addVehicle(v);
-              setVehicles(StorageService.getVehicles());
-              showToast('🚗 Автомобіль додано до гаража!');
-            }}
-            onDeleteVehicle={(id) => {
-              StorageService.deleteVehicle(id);
-              setVehicles(StorageService.getVehicles());
-              showToast('Автомобіль видалено.');
-            }}
-            onResetAllData={() => {
-              StorageService.resetAll();
-              window.location.reload();
-            }}
-          />
+          <div>
+            <ProfileTab
+              user={user}
+              vehicles={vehicles}
+              districts={districts}
+              onSaveProfile={(updated) => {
+                StorageService.saveUser(updated);
+                setUser(StorageService.getUser());
+                showToast('Профіль збережено!');
+              }}
+              onAddVehicle={(v) => {
+                StorageService.addVehicle(v);
+                setVehicles(StorageService.getVehicles());
+                showToast('🚗 Авто додано!');
+              }}
+              onDeleteVehicle={(id) => {
+                StorageService.deleteVehicle(id);
+                setVehicles(StorageService.getVehicles());
+                showToast('Авто видалено');
+              }}
+              onResetAllData={() => {
+                StorageService.resetAll();
+                window.location.reload();
+              }}
+            />
+
+            {/* Settings moved to profile */}
+            <div className="card">
+              <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '12px', color: 'var(--text-muted)' }}>
+                Налаштування
+              </h3>
+
+              <button
+                className="btn btn-secondary"
+                style={{ width: '100%', marginBottom: '8px', justifyContent: 'flex-start', gap: '10px' }}
+                onClick={toggleTheme}
+              >
+                {isLightTheme ? <Moon size={18} /> : <Sun size={18} />}
+                {isLightTheme ? 'Темна тема' : 'Світла тема'}
+              </button>
+
+              <button
+                className="btn btn-secondary"
+                style={{ width: '100%', marginBottom: '8px', justifyContent: 'flex-start', gap: '10px', color: '#0088cc' }}
+                onClick={() => { triggerHaptic('light'); setIsTelegramModalOpen(true); }}
+              >
+                <Bot size={18} />
+                Telegram бот
+              </button>
+
+              {user.isAdmin && (
+                <button
+                  className="btn btn-secondary"
+                  style={{ width: '100%', justifyContent: 'flex-start', gap: '10px', color: 'var(--accent-warning)' }}
+                  onClick={() => { triggerHaptic('light'); setIsAdminModalOpen(true); }}
+                >
+                  <Shield size={18} />
+                  Адмін панель
+                </button>
+              )}
+
+              <button
+                className="btn btn-secondary"
+                style={{ width: '100%', marginTop: '8px', justifyContent: 'flex-start', gap: '10px' }}
+                onClick={handleManualSync}
+              >
+                🔄 Синхронізувати
+                {cloudStatus === 'offline' && <span style={{ color: 'var(--accent-danger)', fontSize: '11px' }}>офлайн</span>}
+              </button>
+            </div>
+          </div>
         )}
       </main>
 
-      {/* Bottom Telegram Mini App Navigation Bar */}
+      {/* ===== BOTTOM NAV (5 items, no map) ===== */}
       <nav className="bottom-nav">
         <button className={`nav-item ${activeTab === 'home' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('home'); }}>
           <Home size={20} />
-          Головна
-        </button>
-        <button className={`nav-item ${activeTab === 'map' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('map'); }}>
-          <Map size={20} />
-          Карта
-        </button>
-
-        {/* Center Floating Create (+) Button */}
-        <button className="nav-create-btn" onClick={() => { triggerHaptic('medium'); setIsCreateModalOpen(true); }} title="Створити поїздку">
-          <PlusCircle size={26} />
+          <span>Головна</span>
         </button>
 
         <button className={`nav-item ${activeTab === 'search' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('search'); }}>
           <Search size={20} />
-          Пошук
+          <span>Пошук</span>
         </button>
+
+        <button className="nav-create-btn" onClick={() => { triggerHaptic('medium'); setIsCreateModalOpen(true); }}>
+          <PlusCircle size={26} />
+        </button>
+
         <button className={`nav-item ${activeTab === 'my_trips' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('my_trips'); }}>
           <Car size={20} />
-          Поїздки
+          <span>Поїздки</span>
         </button>
+
         <button className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('profile'); }}>
           <User size={20} />
-          Профіль
+          <span>Профіль</span>
         </button>
       </nav>
 
-      {/* Notifications Modal */}
+      {/* ===== MODALS ===== */}
+
+      {/* Notifications */}
       {isNotificationsOpen && (
         <div className="modal-overlay" onClick={() => setIsNotificationsOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Bell color="var(--accent-green)" /> Сповіщення
-              </h2>
+              <h2 style={{ fontSize: '18px', fontWeight: '800' }}>Сповіщення</h2>
               <button onClick={() => setIsNotificationsOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
                 <X size={20} />
               </button>
             </div>
 
             {notifications.length === 0 ? (
-              <p style={{ fontSize: '13px', color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>У вас немає нових сповіщень.</p>
+              <p style={{ fontSize: '13px', color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>Немає сповіщень</p>
             ) : (
               notifications.map(n => (
-                <div key={n.id} style={{ padding: '12px', background: n.isRead ? 'var(--bg-primary)' : 'rgba(16, 185, 129, 0.08)', borderLeft: n.isRead ? 'none' : '3px solid var(--accent-green)', borderRadius: 'var(--radius-md)', marginBottom: '8px' }}>
+                <div key={n.id} style={{ padding: '12px', background: n.isRead ? 'var(--bg-primary)' : 'rgba(16, 185, 129, 0.08)', borderLeft: n.isRead ? 'none' : '3px solid var(--accent-green)', borderRadius: 'var(--radius-sm)', marginBottom: '8px' }}>
                   <div style={{ fontWeight: '700', fontSize: '14px' }}>{n.title}</div>
                   <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>{n.message}</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '6px' }}>{new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
@@ -761,7 +739,6 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Booking Seat Modal */}
       <BookingModal
         isOpen={!!bookingTripTarget}
         onClose={() => setBookingTripTarget(null)}
@@ -769,7 +746,6 @@ export const App: React.FC = () => {
         onConfirmBooking={handleConfirmBooking}
       />
 
-      {/* Modals */}
       <TripFormModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
@@ -801,7 +777,7 @@ export const App: React.FC = () => {
           StorageService.deleteTrip(tripId);
           setTrips(StorageService.getTrips());
           setRequests(StorageService.getRequests());
-          showToast('Поїздку видалено.');
+          showToast('Поїздку видалено');
         }}
       />
 
@@ -821,12 +797,12 @@ export const App: React.FC = () => {
         onAddDistrict={(d) => {
           StorageService.addDistrict(d);
           setDistricts(StorageService.getDistricts());
-          showToast('Новий район додано!');
+          showToast('Район додано!');
         }}
         onSaveSettings={(s) => {
           StorageService.saveSettings(s);
           setSettings(StorageService.getSettings());
-          showToast('Налаштування збережено!');
+          showToast('Збережено!');
         }}
       />
     </div>
