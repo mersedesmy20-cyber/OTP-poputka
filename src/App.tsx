@@ -14,7 +14,6 @@ import { TripMapView } from './components/map/TripMapView';
 import {
   Home,
   Map,
-  Search,
   PlusCircle,
   Car,
   User,
@@ -26,6 +25,8 @@ import {
   Info,
   Sun,
   Moon,
+  SlidersHorizontal,
+  ChevronRight,
 } from 'lucide-react';
 import './styles/theme.css';
 
@@ -57,6 +58,16 @@ export const App: React.FC = () => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [selectedTripDetails, setSelectedTripDetails] = useState<Trip | null>(null);
   const [bookingTripTarget, setBookingTripTarget] = useState<Trip | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Onboarding — hide after user dismisses
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
+    return !localStorage.getItem('otp_onboarding_done');
+  });
+  const dismissOnboarding = () => {
+    setShowOnboarding(false);
+    localStorage.setItem('otp_onboarding_done', '1');
+  };
 
   // Theme State
   const [isLightTheme, setIsLightTheme] = useState<boolean>(() => {
@@ -338,6 +349,7 @@ export const App: React.FC = () => {
   };
 
   // Filtering trips
+  const hasActiveFilters = selectedDistrictId !== '' || selectedTripType !== '' || selectedRecurrence !== '';
   const filteredTrips = trips.filter(t => {
     if (!t || !t.id) return false;
     if (selectedDistrictId && t.originDistrictId !== selectedDistrictId) return false;
@@ -345,6 +357,8 @@ export const App: React.FC = () => {
     if (selectedRecurrence && t.recurrence?.type !== selectedRecurrence) return false;
     return true;
   });
+
+  const displayTrips = hasActiveFilters ? filteredTrips : trips;
 
   const userDistrictObj = districts.find(d => d.id === user.districtId);
   const unreadNotifsCount = notifications.filter(n => !n.isRead).length;
@@ -395,6 +409,44 @@ export const App: React.FC = () => {
               </div>
             </div>
 
+            {/* ===== ONBOARDING FOR NEW USERS ===== */}
+            {showOnboarding && (
+              <div className="onboarding-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                  <h3 style={{ fontSize: '15px', fontWeight: '800' }}>Як це працює?</h3>
+                  <button onClick={dismissOnboarding} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: '2px' }}>
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="onboarding-steps">
+                  <div className="onboarding-step">
+                    <div className="onboarding-step-num">1</div>
+                    <div>
+                      <strong>Оберіть роль</strong>
+                      <p>Водій — пропонуєте місце. Пасажир — шукаєте попутку.</p>
+                    </div>
+                  </div>
+                  <div className="onboarding-step">
+                    <div className="onboarding-step-num">2</div>
+                    <div>
+                      <strong>Знайдіть поїздку</strong>
+                      <p>Перегляньте список або карту. Натисніть «Забронювати».</p>
+                    </div>
+                  </div>
+                  <div className="onboarding-step">
+                    <div className="onboarding-step-num">3</div>
+                    <div>
+                      <strong>Їдьте разом!</strong>
+                      <p>Деталі та контакт водія відкриються після бронювання.</p>
+                    </div>
+                  </div>
+                </div>
+                <button className="btn btn-primary" style={{ width: '100%', marginTop: '12px' }} onClick={dismissOnboarding}>
+                  Зрозуміло, почнімо!
+                </button>
+              </div>
+            )}
+
             {/* Role Toggle */}
             <div className="role-switch-container">
               <button
@@ -411,35 +463,49 @@ export const App: React.FC = () => {
               </button>
             </div>
 
-            {/* Search Bar Trigger (opens search tab) */}
-            <div
-              className="search-bar-trigger"
-              onClick={() => { triggerHaptic('light'); setActiveTab('search'); }}
-            >
-              <Search size={18} color="var(--text-dim)" />
-              <span>Пошук поїздки...</span>
+            {/* Section Header with filter toggle */}
+            <div className="section-header">
+              <span className="section-title">
+                Поїздки
+                <span className="section-count">{displayTrips.length}</span>
+              </span>
+              <button
+                className={`icon-btn-sm ${hasActiveFilters ? 'active' : ''}`}
+                onClick={() => setShowFilters(!showFilters)}
+              >
+                <SlidersHorizontal size={16} />
+              </button>
             </div>
 
-            {/* Section Header */}
-            <div className="section-header">
-              <span className="section-title">Поїздки</span>
-              <span className="section-count">{trips.length}</span>
-            </div>
+            {/* Collapsible Filters */}
+            {showFilters && (
+              <TripFilter
+                districts={districts}
+                selectedDistrictId={selectedDistrictId}
+                onSelectDistrict={setSelectedDistrictId}
+                selectedTripType={selectedTripType}
+                onSelectTripType={setSelectedTripType}
+                selectedRecurrence={selectedRecurrence}
+                onSelectRecurrence={setSelectedRecurrence}
+                onReset={() => {
+                  setSelectedDistrictId('');
+                  setSelectedTripType('');
+                  setSelectedRecurrence('');
+                }}
+              />
+            )}
 
             {/* Trip Cards Feed */}
-            {trips.length === 0 ? (
+            {displayTrips.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-state-icon">
                   <Info size={28} />
                 </div>
                 <h3>Поки немає поїздок</h3>
-                <p>Станьте першим — опублікуйте поїздку для колег!</p>
-                <button className="btn btn-primary" onClick={() => setIsCreateModalOpen(true)}>
-                  <PlusCircle size={18} /> Створити поїздку
-                </button>
+                <p>Натисніть <strong>+</strong> щоб створити першу поїздку!</p>
               </div>
             ) : (
-              trips.map(trip => (
+              displayTrips.map(trip => (
                 <TripCard
                   key={trip.id}
                   trip={trip}
@@ -454,7 +520,7 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* Tab: MAP */}
+        {/* Tab: MAP — now directly accessible */}
         {activeTab === 'map' && (
           <TripMapView
             trips={trips}
@@ -466,7 +532,7 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* Tab: SEARCH */}
+        {/* Tab: SEARCH — kept for deep filtering */}
         {activeTab === 'search' && (
           <div>
             <div style={{ padding: '16px 16px 0' }}>
@@ -488,29 +554,10 @@ export const App: React.FC = () => {
               }}
             />
 
-            {/* Map toggle in search */}
-            <div style={{ padding: '0 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ padding: '0 16px 8px' }}>
               <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>
                 Знайдено: {filteredTrips.length}
               </span>
-              <button
-                onClick={() => { triggerHaptic('light'); setActiveTab('map'); }}
-                style={{
-                  background: 'none',
-                  border: '1px solid var(--border-color)',
-                  color: 'var(--text-muted)',
-                  borderRadius: '8px',
-                  padding: '4px 10px',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                }}
-              >
-                <Map size={13} /> На карті
-              </button>
             </div>
 
             {filteredTrips.length === 0 ? (
@@ -540,7 +587,6 @@ export const App: React.FC = () => {
               <h2 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '16px' }}>Мої поїздки</h2>
             </div>
 
-            {/* As Driver */}
             <div className="card">
               <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '12px', color: 'var(--text-muted)' }}>
                 Як водій
@@ -571,7 +617,6 @@ export const App: React.FC = () => {
               )}
             </div>
 
-            {/* As Passenger */}
             <div className="card">
               <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '12px', color: 'var(--text-muted)' }}>
                 Як пасажир
@@ -636,64 +681,85 @@ export const App: React.FC = () => {
               }}
             />
 
-            {/* Settings moved to profile */}
+            {/* Settings section with descriptions */}
             <div className="card">
-              <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '12px', color: 'var(--text-muted)' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '14px' }}>
                 Налаштування
               </h3>
 
-              <button
-                className="btn btn-secondary"
-                style={{ width: '100%', marginBottom: '8px', justifyContent: 'flex-start', gap: '10px' }}
-                onClick={toggleTheme}
-              >
-                {isLightTheme ? <Moon size={18} /> : <Sun size={18} />}
-                {isLightTheme ? 'Темна тема' : 'Світла тема'}
-              </button>
+              <div className="settings-item" onClick={toggleTheme}>
+                <div className="settings-item-left">
+                  {isLightTheme ? <Moon size={20} color="var(--accent-purple)" /> : <Sun size={20} color="var(--accent-warning)" />}
+                  <div>
+                    <div className="settings-item-title">{isLightTheme ? 'Темна тема' : 'Світла тема'}</div>
+                    <div className="settings-item-desc">Змінити вигляд додатку</div>
+                  </div>
+                </div>
+                <ChevronRight size={16} color="var(--text-dim)" />
+              </div>
 
-              <button
-                className="btn btn-secondary"
-                style={{ width: '100%', marginBottom: '8px', justifyContent: 'flex-start', gap: '10px', color: '#0088cc' }}
-                onClick={() => { triggerHaptic('light'); setIsTelegramModalOpen(true); }}
-              >
-                <Bot size={18} />
-                Telegram бот
-              </button>
+              <div className="settings-item" onClick={() => { triggerHaptic('light'); setIsTelegramModalOpen(true); }}>
+                <div className="settings-item-left">
+                  <Bot size={20} color="#0088cc" />
+                  <div>
+                    <div className="settings-item-title">Telegram бот</div>
+                    <div className="settings-item-desc">Сповіщення та швидке бронювання</div>
+                  </div>
+                </div>
+                <ChevronRight size={16} color="var(--text-dim)" />
+              </div>
 
               {user.isAdmin && (
-                <button
-                  className="btn btn-secondary"
-                  style={{ width: '100%', justifyContent: 'flex-start', gap: '10px', color: 'var(--accent-warning)' }}
-                  onClick={() => { triggerHaptic('light'); setIsAdminModalOpen(true); }}
-                >
-                  <Shield size={18} />
-                  Адмін панель
-                </button>
+                <div className="settings-item" onClick={() => { triggerHaptic('light'); setIsAdminModalOpen(true); }}>
+                  <div className="settings-item-left">
+                    <Shield size={20} color="var(--accent-warning)" />
+                    <div>
+                      <div className="settings-item-title">Адмін панель</div>
+                      <div className="settings-item-desc">Райони, налаштування, скарги</div>
+                    </div>
+                  </div>
+                  <ChevronRight size={16} color="var(--text-dim)" />
+                </div>
               )}
 
-              <button
-                className="btn btn-secondary"
-                style={{ width: '100%', marginTop: '8px', justifyContent: 'flex-start', gap: '10px' }}
-                onClick={handleManualSync}
-              >
-                🔄 Синхронізувати
-                {cloudStatus === 'offline' && <span style={{ color: 'var(--accent-danger)', fontSize: '11px' }}>офлайн</span>}
-              </button>
+              <div className="settings-item" onClick={handleManualSync}>
+                <div className="settings-item-left">
+                  <span style={{ fontSize: '20px' }}>🔄</span>
+                  <div>
+                    <div className="settings-item-title">Синхронізувати</div>
+                    <div className="settings-item-desc">
+                      {cloudStatus === 'offline' ? 'Офлайн — натисніть для спроби' : 'Оновити дані з хмари'}
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight size={16} color="var(--text-dim)" />
+              </div>
+
+              <div className="settings-item" onClick={() => setShowOnboarding(true)}>
+                <div className="settings-item-left">
+                  <Info size={20} color="var(--accent-cyan)" />
+                  <div>
+                    <div className="settings-item-title">Як користуватись</div>
+                    <div className="settings-item-desc">Показати інструкцію для новачків</div>
+                  </div>
+                </div>
+                <ChevronRight size={16} color="var(--text-dim)" />
+              </div>
             </div>
           </div>
         )}
       </main>
 
-      {/* ===== BOTTOM NAV (5 items, no map) ===== */}
+      {/* ===== BOTTOM NAV — 5 items with MAP back ===== */}
       <nav className="bottom-nav">
         <button className={`nav-item ${activeTab === 'home' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('home'); }}>
           <Home size={20} />
           <span>Головна</span>
         </button>
 
-        <button className={`nav-item ${activeTab === 'search' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('search'); }}>
-          <Search size={20} />
-          <span>Пошук</span>
+        <button className={`nav-item ${activeTab === 'map' ? 'active' : ''}`} onClick={() => { triggerHaptic('light'); setActiveTab('map'); }}>
+          <Map size={20} />
+          <span>Карта</span>
         </button>
 
         <button className="nav-create-btn" onClick={() => { triggerHaptic('medium'); setIsCreateModalOpen(true); }}>
